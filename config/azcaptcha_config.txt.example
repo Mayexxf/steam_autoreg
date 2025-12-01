@@ -1,0 +1,11 @@
+# AZcaptcha API Key Configuration
+#
+# Получите ваш API ключ на https://azcaptcha.com в разделе "API Key"
+# Скопируйте этот файл в azcaptcha_config.txt и вставьте ваш ключ
+#
+# Формат: просто вставьте ваш 32-символьный API ключ (без кавычек и комментариев)
+#
+# Стоимость: $1 за 1000 решённых hCaptcha
+# Документация: https://azcaptcha.com/document
+
+your_32_character_api_key_here

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python steam_test_stealth.py:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(python:*)",
+      "WebSearch",
+      "WebFetch(domain:azcaptcha.com)",
+      "WebFetch(domain:store.steampowered.com)",
+      "WebFetch(domain:2captcha.com)",
+      "Bash(dir:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

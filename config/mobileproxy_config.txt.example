@@ -1,0 +1,8 @@
+# MobileProxy API Key Configuration
+#
+# Получите ваш proxy_key на https://mobileproxy.space в разделе "Мои прокси"
+# Скопируйте этот файл в mobileproxy_config.txt и вставьте ваш ключ
+#
+# Формат: просто вставьте ваш proxy_key (без кавычек и комментариев)
+
+your_proxy_key_here_32_characters

@@ -1,0 +1,14 @@
+# 2Captcha API Key Configuration
+#
+# Получите ваш API ключ на https://2captcha.com/setting/account
+# Скопируйте этот файл в 2captcha_config.txt и вставьте ваш ключ
+#
+# Формат: просто вставьте ваш 32-символьный API ключ (без кавычек)
+#
+# Стоимость: $2-3 за 1000 решённых hCaptcha
+# Минимальное пополнение: $10
+# Документация: https://2captcha.com/2captcha-api#solving_hcaptcha
+#
+# ВАЖНО: 2Captcha 100% работает с hCaptcha и Steam!
+
+your_32_character_2captcha_api_key_here

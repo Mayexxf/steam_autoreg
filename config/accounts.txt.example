@@ -1,0 +1,9 @@
+# Конфигурационный файл для автоматической регистрации аккаунтов Steam
+# Формат: email:username:password
+# Каждый аккаунт на новой строке
+# Строки, начинающиеся с # - комментарии и игнорируются
+
+# Примеры:
+# testuser1@example.com:testuser1:MySecurePass123!
+# testuser2@example.com:testuser2:AnotherPass456!
+# testuser3@example.com:testuser3:SuperSecure789!

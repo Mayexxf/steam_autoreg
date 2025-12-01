@@ -55,6 +55,27 @@ from src.stealth.cookie_generator import CookieGenerator
 from src.stealth.storage_generator import StorageGenerator
 from src.stealth.human_typing import HumanTypist
 from src.stealth.geo_config import get_geo_config, detect_country_from_geo
+from src.proxy.mobileproxy_manager import MobileProxyManager
+
+# ============================================================================
+# 🔧 ЗАГЛУШКА: ПРЯМОЕ УКАЗАНИЕ HTTP ПРОКСИ
+# ============================================================================
+# Раскомментируйте и укажите ваш прокси напрямую здесь, чтобы не использовать
+# файл proxies.txt и не вызывать API смены IP
+#
+# Поддерживаемые форматы:
+#   - "login:pass@host:port"           (HTTP с авторизацией)
+#   - "host:port"                      (HTTP без авторизации)
+#   - "http://login:pass@host:port"    (явное указание HTTP)
+#   - "socks5://login:pass@host:port"  (SOCKS5 прокси)
+#
+# Примеры:
+#   HARDCODED_PROXY = "user:password@proxy.example.com:8080"
+#   HARDCODED_PROXY = "185.162.128.75:9528"
+#   HARDCODED_PROXY = "http://user:pass@proxy.example.com:3128"
+#
+HARDCODED_PROXY = "api5a139bc49b87c5b1_c_KZ_s_12:gOL8kqhf@gate.node-proxy.com:10012"  # Замените None на строку с вашим прокси
+# ============================================================================
 
 
 def refresh_proxy_ip(proxy_refresh_url=None):
@@ -305,10 +326,19 @@ class SteamTestStealth:
         self.proxy = proxy
         self.headless = headless
         self.driver = None
+        self.proxy_manager = None  # MobileProxyManager instance
 
         # Настройки таймаутов
         self.page_timeout = 60
         self.wait_after_load = 2
+
+        # Инициализируем MobileProxyManager если есть API ключ
+        try:
+            self.proxy_manager = MobileProxyManager()
+            print(f"[MOBILEPROXY] Manager initialized with API key")
+        except ValueError:
+            print(f"[MOBILEPROXY] No API key found - will use static proxies")
+            self.proxy_manager = None
 
         # Загружаем прокси если не указан
         if self.proxy == "DISABLED":
@@ -325,9 +355,22 @@ class SteamTestStealth:
             print("[WARN] No proxy - testing without proxy")
 
     def _load_proxy(self):
-        """Загрузка прокси из proxies.txt"""
+        """Загрузка прокси из proxies.txt или HARDCODED_PROXY"""
+        # Проверяем наличие заглушки HARDCODED_PROXY
+        if HARDCODED_PROXY:
+            print(f"[PROXY] Using HARDCODED_PROXY from code")
+            # Не показываем пароль в логах
+            if '@' in HARDCODED_PROXY:
+                safe_display = HARDCODED_PROXY.split('@')[1]
+            else:
+                safe_display = HARDCODED_PROXY.split(':')[0] + ':****'
+            print(f"[PROXY] Hardcoded proxy: {safe_display}")
+            print(f"[PROXY] Skipping IP refresh (using static proxy)")
+            return HARDCODED_PROXY
+
+        # Загружаем из proxies.txt если заглушка не установлена
         try:
-            with open("proxies.txt", encoding="utf-8") as f:
+            with open("config/proxies.txt", encoding="utf-8") as f:
                 proxies = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
             if proxies:
@@ -421,8 +464,27 @@ class SteamTestStealth:
 
         # Обновляем IP прокси и определяем геолокацию (если используется прокси)
         geo_config = None
-        if self.proxy:
+
+        # Пропускаем смену IP если используется HARDCODED_PROXY
+        if self.proxy and HARDCODED_PROXY:
+            print(f"\n[PROXY] Using HARDCODED_PROXY - skipping IP refresh")
+            print()
+        elif self.proxy and self.proxy_manager:
             print(f"\n[PROXY] Refreshing IP before browser launch...")
+
+            # Используем новый MobileProxyManager
+            result = self.proxy_manager.change_ip_and_get_geo(wait_time=3)
+
+            if result.get('success'):
+                geo_config = result.get('geo')
+                print(f"[PROXY] Ready to use with new IP: {result['new_ip']}")
+            else:
+                print(f"[PROXY] Failed to change IP: {result.get('message')}")
+
+            print()
+        elif self.proxy:
+            # Fallback на старый метод если нет API ключа
+            print(f"\n[PROXY] Refreshing IP (legacy method)...")
             refresh_result = refresh_proxy_ip()
 
             # Определяем геолокацию по новому IP

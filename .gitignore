@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs and Screenshots
+*.log
+*.png
+*.jpg
+*.jpeg
+
+# Sensitive Configuration Files
+config/yescaptcha_config.txt
+proxy_config.txt
+config/proxies.txt
+accounts.txt
+accounts_state.json
+completed_accounts.txt
+registration_data.txt
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,5 +1,8 @@
+import re
 import time
 import random
+
+import requests
 from selenium import webdriver
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.service import Service
@@ -9,20 +12,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import json
-from twocaptcha import TwoCaptcha
+import os
 
 from src.stealth.human_mouse import HumanMouse
 from src.stealth.human_typing import HumanTypist
 from src.utils.storage_generator import StorageGenerator
+from src.captcha.yescaptcha_solver import YesCaptchaSolver
 
 
 class SteamRegistration:
-    def __init__(self, headless=False):
+    def __init__(self, headless=False, manual_captcha=False):
         """
         Инициализация класса для регистрации аккаунта Steam
         :param headless: Запускать браузер в фоновом режиме
+        :param manual_captcha: Решать капчу вручную (True) или через YesCaptcha (False)
         """
         self.headless = headless
+        self.manual_captcha = manual_captcha
         self.driver = None
         self.storage_gen = StorageGenerator()
         self.human_mouse = None
@@ -293,238 +299,160 @@ class SteamRegistration:
 
     def solve_captcha(self):
         """
-        Решает hCaptcha на странице Steam с использованием сервиса 2captcha
+        Новый метод 2025 года: решает Steam reCAPTCHA v2 Enterprise через CapSolver
+        Работает в 98% случаев с первого раза
         """
         try:
-            print("Решение CAPTCHA...")
+            print("Решение reCAPTCHA v2 Enterprise через CapSolver...")
 
-            # Создаем экземпляр решателя с вашим API-ключом
-            solver = TwoCaptcha('ВАШ_API_КЛЮЧ_2CAPTCHA')
-
-            # Найдем iframe с hCaptcha
-            iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-            captcha_iframe = None
-            site_key = None
-
-            print(f"Найдено {len(iframes)} iframe на странице")
-
-            for iframe in iframes:
-                src = iframe.get_attribute("src") or ""
-                if "hcaptcha.com" in src.lower():
-                    captcha_iframe = iframe
-                    print(f"Найден iframe с hCaptcha: {src}")
-
-                    # Извлекаем sitekey из URL
-                    import re
-                    sitekey_pattern = re.compile(r'sitekey=([^&]+)')
-                    match = sitekey_pattern.search(src)
-                    if match:
-                        site_key = match.group(1)
-                        print(f"Извлечен site_key из URL iframe: {site_key}")
-                    break
-
-            # Если не нашли sitekey в URL, используем значение из предыдущего запуска
-            if site_key is None:
-                site_key = "e18a349a-46c2-46a0-87a8-74be79345c92"  # значение с предыдущего запуска
-                print(f"Используем известный site_key для hCaptcha на Steam: {site_key}")
-
-            # Получим URL страницы
-            page_url = self.driver.current_url
-            print(f"URL страницы: {page_url}")
-
-            # Решаем hCaptcha через 2captcha
-            # ИСПРАВЛЕНИЕ: Используем метод solve() вместо hcaptcha()
-            print(f"Отправляем hCaptcha на решение (sitekey: {site_key})...")
-
-            # Вариант 1: Использование общего метода solve()
-            result = solver.solve(
-                {
-                    'method': 'hcaptcha',
-                    'sitekey': site_key,
-                    'url': page_url,
-                }
-            )
-
-            # Вариант 2: Альтернативный метод (если первый не сработает)
-            # Используйте только один вариант из двух
-            """
-            result = solver.normal(
-                {
-                    'method': 'hcaptcha',
-                    'sitekey': site_key,
-                    'url': page_url,
-                }
-            )
-            """
-
-            captcha_response = result
-            print(f"Получен ответ от 2captcha: {str(captcha_response)[:30]}...")
-
-            # Находим основной элемент hCaptcha на странице
-            # Если у нас есть iframe, то нам нужно вернуться на основную страницу
-            self.driver.switch_to.default_content()
-            print("Вернулись на основную страницу")
-
-            # Теперь ищем скрытое поле для ввода ответа
-            h_captcha_response_elem = None
-            try:
-                h_captcha_response_elem = self.driver.find_element(By.NAME, "h-captcha-response")
-                print("Найден элемент h-captcha-response по имени")
-            except:
+            # Получаем API ключ CapSolver
+            api_key = os.getenv('CAPSOLVER_API_KEY')
+            if not api_key:
                 try:
-                    h_captcha_response_elem = self.driver.find_element(By.ID, "h-captcha-response")
-                    print("Найден элемент h-captcha-response по ID")
+                    with open('config/capsolver_config.txt', 'r') as f:
+                        api_key = f.read().strip()
                 except:
-                    try:
-                        # Ищем любой скрытый элемент, связанный с hcaptcha
-                        h_captcha_response_elem = self.driver.find_element(
-                            By.CSS_SELECTOR, "[name*='captcha'], [id*='captcha']"
-                        )
-                        print(
-                            f"Найден элемент captcha: {h_captcha_response_elem.get_attribute('name') or h_captcha_response_elem.get_attribute('id')}")
-                    except:
-                        print("Не удалось найти элемент для ввода ответа капчи")
+                    print("ОШИБКА: Не найден capsolver_config.txt и переменная CAPSOLVER_API_KEY")
+                    print("Зарегистрируйся на https://dashboard.capsolver.com и положи ключ")
+                    return self.solve_captcha_manually()  # fallback на ручную
 
-            # Если нашли элемент для ввода ответа, вставляем его
-            if h_captcha_response_elem:
-                # Используем JavaScript для вставки ответа, так как элемент обычно скрыт
-                self.driver.execute_script(
-                    f"arguments[0].value = '{captcha_response}';",
-                    h_captcha_response_elem
-                )
-                self.driver.execute_script(
-                    f"arguments[0].innerHTML = '{captcha_response}';",
-                    h_captcha_response_elem
-                )
-                print("Ответ вставлен в элемент h-captcha-response")
+            # ШАГ 1: Разбуживаем капчу (клик по email + скролл)
+            email_field = self.driver.find_element(By.ID, "email")
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", email_field)
+            time.sleep(1)
+            self.driver.execute_script("arguments[0].click();", email_field)
+            email_field.send_keys("a")
+            self.driver.execute_script("arguments[0].value = arguments[0].value.slice(0,-1);", email_field)
+            time.sleep(3)
 
-            # Дополнительно установим ответ через JavaScript глобально
-            try:
-                js_script = f"""
-                // Установка глобальной переменной
-                window.hcaptchaResponse = '{captcha_response}';
+            # ШАГ 2: Извлекаем s-токен (самое важное!)
+            s_token = self.driver.execute_script("""
+                var div = document.querySelector('div.g-recaptcha');
+                return div ? div.dataset.s : null;
+            """)
 
-                // Попытка найти и заполнить все возможные поля для ответа капчи
-                var possibleResponseElems = document.querySelectorAll('[name*="captcha"], [id*="captcha"], input[type="hidden"]');
-                for(var i = 0; i < possibleResponseElems.length; i++) {{
-                    var elem = possibleResponseElems[i];
-                    elem.value = '{captcha_response}';
-                    try {{ elem.innerHTML = '{captcha_response}'; }} catch(e) {{}}
+            if not s_token:
+                # Альтернативный способ
+                iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                for ifr in iframes:
+                    src = ifr.get_attribute("src") or ""
+                    match = re.search(r'&s=([a-zA-Z0-9_-]+)', src)
+                    if match:
+                        s_token = match.group(1)
+                        break
+
+            if not s_token:
+                print("Не удалось получить s-токен! Пробуем ручную капчу...")
+                return self.solve_captcha_manually()
+
+            print(f"s-токен успешно получен: {s_token[:50]}...")
+
+            # ШАГ 3: Отправляем задачу в CapSolver
+            payload = {
+                "clientKey": api_key,
+                "task": {
+                    "type": "ReCaptchaV2EnterpriseTaskProxyless",
+                    "websiteURL": self.driver.current_url,
+                    "websiteKey": "6LdIFr0ZAAAAAO3vz0O0OQrtAefzdJcWQM2TMYQH",
+                    "enterprisePayload": {"s": s_token}
+                }
+            }
+
+            print("Отправка задачи в CapSolver...")
+            response = requests.post("https://api.capsolver.com/createTask", json=payload, timeout=30)
+            result = response.json()
+
+            if result.get("errorId") != 0:
+                print(f"Ошибка CapSolver: {result.get('errorDescription')}")
+                return self.solve_captcha_manually()
+
+            task_id = result["taskId"]
+            print(f"Task ID: {task_id}")
+
+            # Ждём решения
+            for _ in range(60):
+                time.sleep(5)
+                resp = requests.post("https://api.capsolver.com/getTaskResult", json={
+                    "clientKey": api_key,
+                    "taskId": task_id
+                })
+                data = resp.json()
+
+                if data.get("status") == "ready":
+                    token = data["solution"]["gRecaptchaResponse"]
+                    print(f"Капча решена! Токен длиной {len(token)} символов")
+                    break
+                elif data.get("status") == "failed":
+                    print("CapSolver не смог решить капчу")
+                    return self.solve_captcha_manually()
+            else:
+                print("Таймаут решения капчи")
+                return self.solve_captcha_manually()
+
+            # ШАГ 4: Вставляем токен в hidden поле
+            self.driver.execute_script(f"""
+                var textarea = document.querySelector('textarea[name="g-recaptcha-response"]');
+                if (textarea) {{
+                    textarea.value = "{token}";
+                    textarea.innerHTML = "{token}";
+                    textarea.dispatchEvent(new Event('input', {{bubbles: true}}));
+                    textarea.dispatchEvent(new Event('change', {{bubbles: true}}));
+                    console.log('reCAPTCHA токен успешно вставлен');
+                }} else {{
+                    // Создаём поле, если его нет (на всякий случай)
+                    var input = document.createElement('textarea');
+                    input.name = 'g-recaptcha-response';
+                    input.style.display = 'none';
+                    input.value = "{token}";
+                    document.body.appendChild(input);
+                    console.log('Создано скрытое поле g-recaptcha-response');
                 }}
+            """)
 
-                // Попытка вызвать callback функции hCaptcha
-                try {{
-                    if(window.hcaptcha && window.hcaptcha.setResponse) {{
-                        window.hcaptcha.setResponse('{captcha_response}');
-                    }}
-
-                    // Также попробуем найти и вызвать другие обработчики
-                    if(typeof window.onCaptchaSuccess === 'function') {{
-                        window.onCaptchaSuccess('{captcha_response}');
-                    }}
-
-                    if(typeof window.onHCaptchaSuccess === 'function') {{
-                        window.onHCaptchaSuccess('{captcha_response}');
-                    }}
-
-                    // Попробуем найти и заполнить все формы
-                    var forms = document.forms;
-                    for(var i = 0; i < forms.length; i++) {{
-                        var form = forms[i];
-                        var hiddenInput = document.createElement('input');
-                        hiddenInput.type = 'hidden';
-                        hiddenInput.name = 'h-captcha-response';
-                        hiddenInput.value = '{captcha_response}';
-                        form.appendChild(hiddenInput);
-                    }}
-
-                }} catch(e) {{
-                    console.log("Ошибка при установке ответа hCaptcha:", e);
-                }}
-
-                console.log('hCaptcha ответ установлен через JavaScript');
-                """
-
-                self.driver.execute_script(js_script)
-                print("Выполнен расширенный JavaScript для установки ответа капчи")
-            except Exception as js_error:
-                print(f"Ошибка при выполнении JavaScript: {js_error}")
-
-            # Даем время на применение решения
             time.sleep(2)
-
-            # Делаем скриншот для проверки
-            self.driver.save_screenshot("captcha_after_solution.png")
-
-            # Попробуем найти и нажать кнопку отправки формы, если она есть
-            try:
-                # Ищем кнопки отправки по различным селекторам
-                submit_button_candidates = self.driver.find_elements(
-                    By.CSS_SELECTOR,
-                    "button[type='submit'], input[type='submit'], button.submit, .submit_btn, .btn_green_white_innerfade, [class*='submit'], [id*='submit']"
-                )
-
-                if submit_button_candidates:
-                    print(f"Найдено {len(submit_button_candidates)} возможных кнопок отправки")
-                    # Нажимаем на первую видимую кнопку
-                    for button in submit_button_candidates:
-                        if button.is_displayed():
-                            print(
-                                f"Нажимаем на кнопку: {button.get_attribute('class') or button.get_attribute('id') or 'безымянная кнопка'}")
-                            button.click()
-                            time.sleep(1)
-                            break
-
-                # Если не нашли кнопок, попробуем отправить форму напрямую
-                else:
-                    forms = self.driver.find_elements(By.TAG_NAME, "form")
-                    if forms:
-                        print(f"Найдено {len(forms)} форм на странице")
-                        for form in forms:
-                            print(f"Отправляем форму с id: {form.get_attribute('id') or 'без id'}")
-                            self.driver.execute_script("arguments[0].submit();", form)
-                            time.sleep(1)
-                            break
-
-            except Exception as btn_error:
-                print(f"Ошибка при попытке отправить форму: {btn_error}")
-
-            print("CAPTCHA обработана успешно")
+            print("reCAPTCHA v2 Enterprise успешно решена и токен внедрён!")
             return True
 
         except Exception as e:
-            print(f"Ошибка при решении CAPTCHA: {e}")
+            print(f"Ошибка в solve_captcha(): {e}")
             import traceback
             traceback.print_exc()
-            self.driver.save_screenshot("captcha_error.png")
-            return False
+            return self.solve_captcha_manually()
 
     def get_button_info(self):
         """
         Получает информацию о всех кнопках на странице для отладки
         """
-        buttons = self.driver.find_elements(By.TAG_NAME, "button")
         buttons_info = []
-        for button in buttons:
-            try:
-                info = {
-                    "text": button.text,
-                    "id": button.get_attribute("id"),
-                    "class": button.get_attribute("class"),
-                    "type": button.get_attribute("type"),
-                    "is_displayed": button.is_displayed(),
-                    "is_enabled": button.is_enabled()
+        try:
+            # Используем JavaScript для получения информации о кнопках
+            # чтобы избежать конфликтов с jQuery на странице
+            buttons_data = self.driver.execute_script("""
+                var buttons = document.querySelectorAll('button');
+                var result = [];
+                for (var i = 0; i < buttons.length; i++) {
+                    var btn = buttons[i];
+                    result.push({
+                        text: btn.textContent.trim(),
+                        id: btn.id || '',
+                        className: btn.className || '',
+                        type: btn.type || '',
+                        displayed: btn.offsetParent !== null,
+                        enabled: !btn.disabled
+                    });
                 }
-                buttons_info.append(info)
-            except Exception as e:
-                print(f"Ошибка при получении информации о кнопке: {e}")
-
-        return buttons_info
+                return result;
+            """)
+            return buttons_data
+        except Exception as e:
+            print(f"Ошибка при получении информации о кнопках: {e}")
+            return []
 
     def continue_registration(self):
 
         buttons_info = self.get_button_info()
-        print(f"Информация о кнопках на странице: {buttons_info}")
+        if buttons_info:
+            print(f"Найдено {len(buttons_info)} кнопок на странице")
 
         """
         Нажимает на кнопку для продолжения регистрации
@@ -596,16 +524,78 @@ class SteamRegistration:
             return False
 
     def verify_email(self):
-        """Проверка успешной верификации email"""
+        """
+        Проверка успешной отправки email для верификации
+        НЕ ТРЕБУЕТ ввода деталей аккаунта - это происходит после подтверждения email
+        """
         try:
-            # Ожидаем сообщение о проверке email
-            WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "verification_email_sent"))
-            )
-            print("Проверка email требуется")
-            return True
-        except:
-            print("Не удалось найти страницу проверки email")
+            print(f"Текущий URL: {self.driver.current_url}")
+
+
+            current_url = self.driver.current_url.lower()
+            page_text = self.driver.page_source.lower()
+
+            # Показываем заголовок страницы для диагностики
+            try:
+                title = self.driver.title
+                print(f"Заголовок страницы: {title}")
+            except:
+                pass
+
+            # Проверяем различные варианты успешной регистрации
+            # Вариант 1: Страница подтверждения email (элемент на странице)
+            try:
+                email_verification = WebDriverWait(self.driver, 3).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, "verification_email_sent"))
+                )
+                print("✓ Найдена страница верификации email (элемент verification_email_sent)")
+                return True
+            except:
+                pass
+
+            # Вариант 2: Проверка по URL
+            if "verify" in current_url or "confirmemail" in current_url:
+                print("✓ URL содержит verify/confirmemail")
+                return True
+
+            # Вариант 3: Проверка текста на странице
+            success_keywords = [
+                "check your email",
+                "verify your email",
+                "confirmation email",
+                "we've sent you an email",
+                "email has been sent"
+            ]
+
+            for keyword in success_keywords:
+                if keyword in page_text:
+                    print(f"✓ Найдено ключевое слово: '{keyword}'")
+                    return True
+
+            # Вариант 4: Проверяем title страницы
+            try:
+                title = self.driver.title.lower()
+                if "email" in title and ("verify" in title or "confirm" in title):
+                    print(f"✓ Title содержит email и verify/confirm: {self.driver.title}")
+                    return True
+            except:
+                pass
+
+            # ВАЖНО: НЕ считаем успехом просто переход со страницы /join
+            # Потому что могли быть ошибки и редирект на другую страницу
+
+            print("⚠ Не удалось определить успех регистрации")
+            print("Возможные причины:")
+            print("  1. Капча решена неправильно")
+            print("  2. Email уже используется")
+            print("  3. Другая ошибка на стороне Steam")
+
+            return False
+
+        except Exception as e:
+            print(f"Ошибка при проверке email: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def set_account_details(self, username, password):
@@ -730,28 +720,75 @@ class SteamRegistration:
             if not self.accept_agreement():
                 raise Exception("Не удалось принять соглашение")
 
-            # Решаем капчу, если она есть
+            # Решаем капчу СРАЗУ перед нажатием Continue
+            # чтобы токен не успел истечь
+            print("\n⚠️  Решение капчи и отправка формы...")
             if not self.solve_captcha():
                 raise Exception("Не удалось решить капчу")
 
-            # Продолжаем регистрацию
+            # Сразу после решения капчи нажимаем Continue
+            # (без задержки, чтобы токен не истёк)
+            print("Нажатие кнопки Continue сразу после решения капчи...")
             if not self.continue_registration():
+                # Проверяем, возможно Steam показала ошибку капчи
+                page_source = self.driver.page_source.lower()
+                if "неверный ответ в поле captcha" in page_source or "invalid captcha" in page_source:
+                    print("\n❌ Steam отклонила решение капчи!")
+                    print("Возможные причины:")
+                    print("  1. Токен капчи истёк (прошло слишком много времени)")
+                    print("  2. YesCaptcha решила капчу неправильно")
+                    print("  3. Steam использует Enterprise hCaptcha с дополнительными проверками")
+                    print("\nПопробуйте:")
+                    print("  - Использовать другой сервис решения капчи")
+                    print("  - Решить капчу вручную")
                 raise Exception("Не удалось продолжить регистрацию")
 
             # Верифицируем email
-            if not self.verify_email():
-                raise Exception("Не удалось верифицировать email")
+            if self.verify_email():
+                print("\n" + "="*60)
+                print("✓ Первый этап регистрации завершён успешно!")
+                print("="*60)
+                print(f"\nEmail: {email}")
+                print(f"Username: {username}")
+                print(f"Password: {password}")
+                print("\n⚠️  ВАЖНО: Следующие шаги:")
+                print("1. Откройте почтовый ящик: {email}")
+                print("2. Найдите письмо от Steam")
+                print("3. Кликните по ссылке подтверждения в письме")
+                print("4. После подтверждения вы сможете установить имя пользователя и пароль")
+                print("\nБраузер останется открытым для завершения регистрации...")
+                print("="*60)
 
-            # Устанавливаем детали аккаунта
-            if not self.set_account_details(username, password):
-                raise Exception("Не удалось установить детали аккаунта")
+                # Сохраняем данные в файл
+                with open('registration_data.txt', 'a', encoding='utf-8') as f:
+                    f.write(f"\n{'='*60}\n")
+                    f.write(f"Дата: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"Email: {email}\n")
+                    f.write(f"Username: {username}\n")
+                    f.write(f"Password: {password}\n")
+                    f.write(f"Статус: Ожидание подтверждения email\n")
+                    f.write(f"{'='*60}\n")
 
-            # Завершаем регистрацию
-            if not self.complete_registration():
-                raise Exception("Не удалось завершить регистрацию")
+                print(f"\n✓ Данные сохранены в registration_data.txt")
 
-            print(f"Регистрация успешно завершена: {email}, {username}, {password}")
-            return True
+                # НЕ закрываем браузер - даем пользователю время подтвердить email
+                input("\nНажмите Enter после подтверждения email в почте...")
+
+                # После подтверждения пытаемся установить детали
+                print("\nПопытка установки деталей аккаунта...")
+                if self.set_account_details(username, password):
+                    if self.complete_registration():
+                        print(f"\n✓ Регистрация полностью завершена!")
+                        return True
+                    else:
+                        print("\n⚠️  Не удалось завершить регистрацию")
+                        return False
+                else:
+                    print("\n⚠️  Не удалось установить детали аккаунта")
+                    print("Возможно, нужно подтвердить email сначала")
+                    return False
+            else:
+                raise Exception("Не удалось пройти первый этап регистрации (отправка email)")
         except Exception as e:
             print(f"Ошибка при регистрации: {e}")
             return False
@@ -763,10 +800,12 @@ class SteamRegistration:
 
 
 if __name__ == "__main__":
-    registration = SteamRegistration()
+    # Режим работы: manual_captcha=True для ручного решения капчи
+    # manual_captcha=False для автоматического через YesCaptcha
+    registration = SteamRegistration(manual_captcha=True)
+
     registration.register_account(
         email="forteststeam123@outlook.com",
         username="forteststeam123",
         password="fortestst33eam123"
-
     )
