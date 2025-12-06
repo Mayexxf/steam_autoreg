@@ -6,7 +6,6 @@ import requests
 from selenium import webdriver
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -17,7 +16,6 @@ import os
 from src.stealth.human_mouse import HumanMouse
 from src.stealth.human_typing import HumanTypist
 from src.utils.storage_generator import StorageGenerator
-from src.captcha.yescaptcha_solver import YesCaptchaSolver
 
 
 class SteamRegistration:

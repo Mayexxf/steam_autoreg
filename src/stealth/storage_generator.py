@@ -111,7 +111,7 @@ class StorageGenerator:
         # YouTube watch history
         storage['yt_player_quality'] = 'hd720'
         storage['yt_player_volume'] = str(random.randint(50, 100))
-        storage['yt_remote_device_id'] = self._random_string(20)
+        storage['yt_remote_device_id'] = self._random_hex(20)
         storage['yt_remote_session_name'] = f"session-{self._random_hex(8)}"
         
         return storage
@@ -254,7 +254,7 @@ class StorageGenerator:
         
         return '\n'.join(script_lines)
     
-    def generate_full_storage(self) -> Dict[str, Any]:
+    def generate_full_storage(self, geo_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Генерирует полный набор localStorage данных
         
@@ -267,8 +267,10 @@ class StorageGenerator:
         full_storage.update(self.generate_common_storage())
         
         # Добавляем Google данные (50% шанс)
-        if random.random() < 0.5:
+        if random.random() < 0.6:
             full_storage.update(self.generate_google_storage())
+
+        full_storage.update(self.generate_steam_storage(geo_config))
         
         # Добавляем Discord предварительные данные (показывает что пользователь УЖЕ был на Discord)
         full_storage.update(self.generate_discord_pre_storage())

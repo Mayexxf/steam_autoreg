@@ -4,6 +4,8 @@
 Steam Test Stealth Script - БЕЗ регистрации
 Только запуск браузера со стелс-функционалом для тестирования на Steam
 """
+from scipy.interpolate import CubicSpline
+from selenium.webdriver import Keys
 
 # ============================================================================
 # 🧪 ТЕСТОВЫЙ РЕЖИМ - БЕЗ РЕГИСТРАЦИИ (STEAM)
@@ -249,16 +251,25 @@ def human_delay(min_ms=500, max_ms=1500):
 
 class SeleniumHumanTypist:
     """Адаптер HumanTypist для Selenium"""
-    def __init__(self, driver, speed_profile='normal', typo_rate=0.05):
+    def __init__(self, driver, speed_profile='normal', typo_rate=0.06, typo_correct_rate=0.9):
         self.driver = driver
-        self.typist = HumanTypist(speed_profile=speed_profile, typo_rate=typo_rate)
+        self.typist = HumanTypist(speed_profile=speed_profile, typo_rate=typo_rate, typo_correct_rate=typo_correct_rate)
 
     def type_text(self, element, text):
+        keystrokes = self.typist.generate_keystrokes(text)
+
         """Печатает текст человекоподобно через Selenium"""
-        for char in text:
-            element.send_keys(char)
-            delay = random.uniform(50, 200) / 1000
-            time.sleep(delay)
+        for stroke in keystrokes:
+            if stroke['type'] == 'press':
+                element.send_keys(stroke['char'])
+            elif stroke['type'] == 'backspace':
+                element.send_keys(Keys.BACKSPACE)
+
+                # Джиттер + имитация неидеального таймера ОС
+                jitter = random.gauss(0, 0.004)  # гауссов шум — как настоящая ОС
+                delay = stroke['delay'] / 1000.0 + jitter
+                if delay < 0.001: delay = 0.001
+                time.sleep(delay)
 
 
 class SeleniumHumanMouse:
@@ -268,22 +279,29 @@ class SeleniumHumanMouse:
         self.actions = ActionChains(driver)
 
     def random_movement(self, movements=3):
-        """Случайное движение мыши"""
-        viewport_width = self.driver.execute_script("return window.innerWidth")
-        viewport_height = self.driver.execute_script("return window.innerHeight")
-
+        width = self.driver.execute_script("return window.innerWidth")
+        height = self.driver.execute_script("return window.innerHeight")
         for _ in range(movements):
-            x = random.randint(100, viewport_width - 100)
-            y = random.randint(100, viewport_height - 100)
-
-            # Плавное движение
-            self.actions.move_by_offset(x - 200, y - 200)
-            self.actions.perform()
-            time.sleep(random.uniform(0.3, 0.8))
+            start_x, start_y = random.randint(0, width), random.randint(0, height)
+            end_x, end_y = random.randint(100, width - 100), random.randint(100, height - 100)
+            # Bézier: 4 control points for curve
+            points = [(start_x, start_y), (random.randint(start_x, end_x), random.randint(start_y, end_y)),
+                      (random.randint(start_x, end_x), random.randint(start_y, end_y)), (end_x, end_y)]
+            t = [0, 0.3, 0.7, 1]
+            cs_x = CubicSpline(t, [p[0] for p in points])
+            cs_y = CubicSpline(t, [p[1] for p in points])
+            steps = 20
+            for i in range(steps):
+                pos = i / steps
+                dx = int(cs_x(pos)) - int(cs_x(pos - 1 / steps if i > 0 else 0))
+                dy = int(cs_y(pos)) - int(cs_y(pos - 1 / steps if i > 0 else 0))
+                self.actions.move_by_offset(dx, dy).perform()
+                time.sleep(random.uniform(0.01, 0.05))
             self.actions.reset_actions()
+            time.sleep(random.uniform(0.3, 0.8))
 
 
-def human_type(driver, selector, text, speed_profile='normal', typo_rate=0.05):
+def human_type(driver, selector, text, speed_profile='normal', typo_rate=0.06):
     """
     Печатает текст РЕАЛИСТИЧНО как человек (версия для Selenium).
 
@@ -296,15 +314,37 @@ def human_type(driver, selector, text, speed_profile='normal', typo_rate=0.05):
     """
     element = driver.find_element(By.CSS_SELECTOR, selector)
 
-    # Создаем экземпляр типиста
-    typist = SeleniumHumanTypist(driver, speed_profile=speed_profile, typo_rate=typo_rate)
+    # Человек сначала водит мышкой → фокус → клик
+    mouse = SeleniumHumanMouse(driver)
+    mouse.random_movement(movements=random.randint(2, 5))
 
-    # Кликаем на поле (с небольшой задержкой)
-    element.click()
-    time.sleep(random.uniform(0.15, 0.4))
+    # 2. Плавное наведение на поле ( САМОЕ ВАЖНОЕ! )
+    ActionChains(driver) \
+        .move_to_element_with_offset(element, random.randint(-10, 10), random.randint(-5, 5)) \
+        .pause(random.uniform(0.3, 1.1)) \
+        .click() \
+        .perform()
 
-    # Печатаем текст
+    # 3. Человек читает подсказку в поле (placeholder), думает...
+    time.sleep(random.uniform(0.6, 2.1))
+
+    # 4. Начинаем печатать — с настоящими burst'ами и опечатками
+    typist = SeleniumHumanTypist(
+        driver,
+        speed_profile=speed_profile,
+        typo_rate=typo_rate,
+        typo_correct_rate=0.92
+    )
     typist.type_text(element, text)
+
+    # 5. После ввода — небольшая пауза (человек проверяет, что написал)
+    time.sleep(random.uniform(0.7, 2.3))
+
+    # 6. Иногда чуть подвигаем мышку после ввода (очень по-человечески)
+    if random.random() < 0.4:
+        ActionChains(driver).move_by_offset(
+            random.randint(-80, 80), random.randint(-80, 80)
+        ).pause(0.3).perform()
 
 
 def random_mouse_movement(driver, movements=3):
@@ -612,13 +652,6 @@ class SteamTestStealth:
                     'suppress_connection_errors': False,  # Показывать ошибки подключения
                     'verify_ssl': False  # Отключить проверку SSL сертификатов для прокси
                 }
-
-                # Для отладки выводим конфигурацию без пароля
-                safe_config = proxy_config.copy()
-                if safe_config.get('password'):
-                    safe_config['password'] = '***'
-                print(f"[PROXY] Config: {safe_config}")
-                print(f"[SELENIUM-WIRE] Proxy configured with authentication")
 
             # ============================================
             # ЗАГРУЗКА ANTI-DETECTION EXTENSION
