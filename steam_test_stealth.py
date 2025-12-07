@@ -46,7 +46,7 @@ from seleniumwire import webdriver  # Используем selenium-wire вме�
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import WebDriverException, TimeoutException
 import random
 import string
 import time
@@ -76,7 +76,9 @@ from src.proxy.mobileproxy_manager import MobileProxyManager
 #   HARDCODED_PROXY = "185.162.128.75:9528"
 #   HARDCODED_PROXY = "http://user:pass@proxy.example.com:3128"
 #
-HARDCODED_PROXY = "api5a139bc49b87c5b1_c_KZ_s_12:gOL8kqhf@gate.node-proxy.com:10012"  # Замените None на строку с вашим прокси
+HARDCODED_PROXY = "yB9Ryx:BAU1FUpyp2yb:nproxy.site:12392"  # Замените None на строку с вашим прокси
+
+
 # ============================================================================
 
 
@@ -199,7 +201,8 @@ def detect_proxy_geo(new_ip):
 
         # Используем бесплатный API для определения геолокации
         # ip-api.com предоставляет 45 запросов в минуту бесплатно
-        response = requests.get(f"http://ip-api.com/json/{new_ip}?fields=status,country,countryCode,city,timezone,currency", timeout=10)
+        response = requests.get(
+            f"http://ip-api.com/json/{new_ip}?fields=status,country,countryCode,city,timezone,currency", timeout=10)
 
         if response.status_code == 200:
             data = response.json()
@@ -251,29 +254,34 @@ def human_delay(min_ms=500, max_ms=1500):
 
 class SeleniumHumanTypist:
     """Адаптер HumanTypist для Selenium"""
+
     def __init__(self, driver, speed_profile='normal', typo_rate=0.06, typo_correct_rate=0.9):
         self.driver = driver
-        self.typist = HumanTypist(speed_profile=speed_profile, typo_rate=typo_rate, typo_correct_rate=typo_correct_rate)
+        self.typist = HumanTypist(speed_profile=speed_profile, typo_rate=typo_rate)
 
     def type_text(self, element, text):
-        keystrokes = self.typist.generate_keystrokes(text)
-
         """Печатает текст человекоподобно через Selenium"""
-        for stroke in keystrokes:
-            if stroke['type'] == 'press':
-                element.send_keys(stroke['char'])
-            elif stroke['type'] == 'backspace':
-                element.send_keys(Keys.BACKSPACE)
-
-                # Джиттер + имитация неидеального таймера ОС
-                jitter = random.gauss(0, 0.004)  # гауссов шум — как настоящая ОС
-                delay = stroke['delay'] / 1000.0 + jitter
-                if delay < 0.001: delay = 0.001
+        total_length = len(text)
+        for i, char in enumerate(text):
+            # Проверяем опечатку (логика из HumanTypist)
+            if self.typist._should_make_typo(i, total_length):
+                typo_char = self.typist._get_typo_char(char)
+                element.send_keys(typo_char)
+                delay = self.typist._get_char_delay(typo_char, i, total_length)
                 time.sleep(delay)
+                time.sleep(random.uniform(0.1, 0.4))  # Пауза перед backspace
+                element.send_keys(Keys.BACKSPACE)
+                time.sleep(random.uniform(0.05, 0.15))
+
+            # Правильный символ
+            element.send_keys(char)
+            delay = self.typist._get_char_delay(char, i, total_length)
+            time.sleep(delay)
 
 
 class SeleniumHumanMouse:
     """Адаптер HumanMouse для Selenium"""
+
     def __init__(self, driver):
         self.driver = driver
         self.actions = ActionChains(driver)
@@ -281,22 +289,56 @@ class SeleniumHumanMouse:
     def random_movement(self, movements=3):
         width = self.driver.execute_script("return window.innerWidth")
         height = self.driver.execute_script("return window.innerHeight")
+
+        # Безопасные границы для движения мыши (отступ от краёв)
+        margin = 50
+        safe_width = max(200, width - margin * 2)
+        safe_height = max(200, height - margin * 2)
+
         for _ in range(movements):
-            start_x, start_y = random.randint(0, width), random.randint(0, height)
-            end_x, end_y = random.randint(100, width - 100), random.randint(100, height - 100)
+            # Генерируем координаты внутри безопасной зоны
+            start_x = random.randint(margin, margin + safe_width)
+            start_y = random.randint(margin, margin + safe_height)
+            end_x = random.randint(margin, margin + safe_width)
+            end_y = random.randint(margin, margin + safe_height)
+
             # Bézier: 4 control points for curve
-            points = [(start_x, start_y), (random.randint(start_x, end_x), random.randint(start_y, end_y)),
-                      (random.randint(start_x, end_x), random.randint(start_y, end_y)), (end_x, end_y)]
+            mid1_x = random.randint(min(start_x, end_x), max(start_x, end_x))
+            mid1_y = random.randint(min(start_y, end_y), max(start_y, end_y))
+            mid2_x = random.randint(min(start_x, end_x), max(start_x, end_x))
+            mid2_y = random.randint(min(start_y, end_y), max(start_y, end_y))
+
+            points = [(start_x, start_y), (mid1_x, mid1_y), (mid2_x, mid2_y), (end_x, end_y)]
             t = [0, 0.3, 0.7, 1]
             cs_x = CubicSpline(t, [p[0] for p in points])
             cs_y = CubicSpline(t, [p[1] for p in points])
+
             steps = 20
+            current_x, current_y = start_x, start_y
+
             for i in range(steps):
                 pos = i / steps
-                dx = int(cs_x(pos)) - int(cs_x(pos - 1 / steps if i > 0 else 0))
-                dy = int(cs_y(pos)) - int(cs_y(pos - 1 / steps if i > 0 else 0))
-                self.actions.move_by_offset(dx, dy).perform()
+                new_x = int(cs_x(pos))
+                new_y = int(cs_y(pos))
+
+                # Вычисляем смещение относительно текущей позиции
+                dx = new_x - current_x
+                dy = new_y - current_y
+
+                # Ограничиваем смещение чтобы не выйти за границы
+                dx = max(-100, min(100, dx))
+                dy = max(-100, min(100, dy))
+
+                try:
+                    self.actions.move_by_offset(dx, dy).perform()
+                    current_x += dx
+                    current_y += dy
+                except Exception:
+                    # Если движение невозможно - пропускаем
+                    pass
+
                 time.sleep(random.uniform(0.01, 0.05))
+
             self.actions.reset_actions()
             time.sleep(random.uniform(0.3, 0.8))
 
@@ -358,13 +400,84 @@ def random_mouse_movement(driver, movements=3):
     mouse = SeleniumHumanMouse(driver)
     mouse.random_movement(movements=movements)
 
+def stealth_checkbox_click(driver, checkbox_selector):
+    """
+    Максимально стелс-отметка чекбокса на Steam (или любой другой странице).
+    Эмулирует реальное движение мыши + диспатч всех MouseEvent событий.
+    Valve почти не ловит такой клик.
+
+    Args:
+        driver: Selenium WebDriver
+        checkbox_selector: CSS селектор, например '#accept_ssa' или '#accept_ssa, [name="accept_ssa"]'
+    """
+    try:
+        # Ищем чекбокс (с fallback селекторами)
+        checkbox = driver.find_element(By.CSS_SELECTOR, checkbox_selector)
+
+        # Если уже отмечен — выходим
+        if checkbox.is_selected():
+            print(f"[CHECKBOX] Уже отмечен: {checkbox_selector}")
+            return True
+
+        print(f"[CHECKBOX] Отмечаем чекбокс: {checkbox_selector}")
+
+        # 1. Небольшое случайное движение мыши перед действием
+        random_mouse_movement(driver, movements=random.randint(1, 3))
+        human_delay(400, 900)  # 0.4–0.9 сек
+
+        # 2. Плавно подводим курсор к чекбоксу с небольшим оффсетом (человек не попадает точно в центр)
+        actions = ActionChains(driver)
+        offset_x = random.randint(-8, 8)
+        offset_y = random.randint(-8, 8)
+        actions.move_to_element_with_offset(checkbox, offset_x, offset_y)
+        actions.pause(random.uniform(0.2, 0.6))
+        actions.perform()
+
+        human_delay(200, 500)  # Короткая пауза перед кликом
+
+        # 3. Диспатчим ВСЕ реальные события мыши через JS (самое важное для стелс)
+        driver.execute_script("""
+            const el = arguments[0];
+            const events = ['mouseover', 'mousemove', 'mousedown', 'mouseup', 'click'];
+            events.forEach(type => {
+                const event = new MouseEvent(type, {
+                    view: window,
+                    bubbles: true,
+                    cancelable: true,
+                    buttons: 1,
+                    clientX: el.getBoundingClientRect().x + el.clientWidth / 2,
+                    clientY: el.getBoundingClientRect().y + el.clientHeight / 2
+                });
+                el.dispatchEvent(event);
+            });
+            // Принудительно отмечаем, если вдруг событие не сработало
+            el.checked = true;
+        """, checkbox)
+
+        # Небольшая пауза после клика
+        human_delay(300, 700)
+
+        # Проверка результата
+        if checkbox.is_selected():
+            print(f"[CHECKBOX] ✓ Успешно отмечен: {checkbox_selector}")
+            return True
+        else:
+            print(f"[CHECKBOX] ✗ Не отметился после JS — пробуем прямой клик (резерв)")
+            checkbox.click()  # Крайний случай
+            return checkbox.is_selected()
+
+    except Exception as e:
+        print(f"[CHECKBOX] Ошибка при отметке {checkbox_selector}: {str(e)[:120]}")
+        return False
+
 
 class SteamTestStealth:
     """Тестовый класс для проверки стелс-функционала БЕЗ регистрации на Steam"""
 
-    def __init__(self, proxy=None, headless=False):
+    def __init__(self, proxy=None, headless=True, fill_form=True):
         self.proxy = proxy
         self.headless = headless
+        self.fill_form = fill_form
         self.driver = None
         self.proxy_manager = None  # MobileProxyManager instance
 
@@ -415,9 +528,8 @@ class SteamTestStealth:
 
             if proxies:
                 # Выбираем случайный прокси
-                proxy = random.choice(proxies)
                 print(f"[PROXY] Loaded from proxies.txt ({len(proxies)} available)")
-                return proxy
+                return random.choice(proxies)
         except Exception as e:
             print(f"[WARN] Could not load proxies: {e}")
         return None
@@ -498,9 +610,9 @@ class SteamTestStealth:
 
     def test_stealth(self):
         """Тестирование стелс-функционала БЕЗ регистрации на Steam"""
-        print("="*70)
+        print("=" * 70)
         print(f"Steam Stealth Test (NO REGISTRATION) - FIREFOX")
-        print("="*70)
+        print("=" * 70)
 
         # Обновляем IP прокси и определяем геолокацию (если используется прокси)
         geo_config = None
@@ -559,7 +671,8 @@ class SteamTestStealth:
             print(f"  Viewport: {fingerprint_config['viewport']['width']}x{fingerprint_config['viewport']['height']}")
             print(f"  Firefox: {firefox_version}")
             print(f"  WebGL: {fingerprint_config['webgl']['vendor'].split('(')[1].split(')')[0]}")
-            print(f"  Hardware: {fingerprint_config['hardware']['cores']} cores, {fingerprint_config['hardware']['memory']}GB RAM")
+            print(
+                f"  Hardware: {fingerprint_config['hardware']['cores']} cores, {fingerprint_config['hardware']['memory']}GB RAM")
             print(f"  Canvas noise: {fingerprint_config['canvas_noise']}")
 
             # Определяем locale и timezone на основе геолокации прокси
@@ -665,6 +778,7 @@ class SteamTestStealth:
             # ============================================
             # ЗАПУСК FIREFOX С SELENIUM-WIRE
             # ============================================
+
             self.driver = webdriver.Firefox(
                 options=options,
                 seleniumwire_options=seleniumwire_options
@@ -700,9 +814,17 @@ class SteamTestStealth:
             cookie_gen = CookieGenerator()
             cookies = cookie_gen.generate_realistic_cookies(num_sites=7)
 
-            # Сначала открываем страницу /join для работы с localStorage
+            # Открываем страницу /join для работы с localStorage
             print(f"\n[2/3] Opening Steam /join page...")
-            self.driver.get("https://store.steampowered.com/join/")
+            try:
+                page_start = time.time()
+                self.driver.get("https://store.steampowered.com/join/")
+                page_time = time.time() - page_start
+                print(f"[PAGE LOAD] ✓ Steam page loaded ({page_time:.2f}s)")
+            except Exception as e:
+                print(f"[PAGE LOAD] ✗ Failed to load Steam page")
+                print(f"[ERROR] {str(e)[:200]}")
+                raise
             time.sleep(self.wait_after_load)
 
             # ============================================
@@ -806,9 +928,9 @@ class SteamTestStealth:
                 print(f"[STORAGE] Warning: Could not fill localStorage - {str(e)[:100]}")
 
             # Перезагружаем страницу чтобы применить cookies
-            print(f"[3/3] Reloading page to apply cookies...")
-            self.driver.get("https://store.steampowered.com/join/")
-            time.sleep(self.wait_after_load)
+            # print(f"[3/3] Reloading page to apply cookies...")
+            # self.driver.get("https://store.steampowered.com/join/")
+            # time.sleep(self.wait_after_load)
 
             # Проверяем что navigator.webdriver все еще скрыт после перезагрузки
             try:
@@ -828,28 +950,141 @@ class SteamTestStealth:
             except:
                 pass
 
+            if self.fill_form:
+                from selenium.webdriver.support.ui import WebDriverWait
+                from selenium.webdriver.support import expected_conditions as EC
+
+                print(f"\n{'=' * 70}")
+                print(f"[FILL FORM] Starting human-like form filling... (OPTIMIZED for Dec 2025)")
+                print(f"{'=' * 70}")
+
+                # Ждём готовность DOM + возможный динамический рендер
+                try:
+                    self.driver.execute_script("return document.readyState === 'complete'")  # Полная загрузка
+                    time.sleep(3)  # Доп. пауза для React-рендера Valve
+                    print("[FILL FORM] DOM ready, waiting for form elements...")
+                except:
+                    pass
+
+                # Диагностика: выведем все inputs (обязательно для дебага в 2025!)
+                try:
+                    inputs = self.driver.find_elements(By.TAG_NAME, 'input')
+                    checkboxes = self.driver.find_elements(By.TAG_NAME, 'input[type="checkbox"]')
+                    print(f"[DEBUG] Found {len(inputs)} input fields + {len(checkboxes)} checkboxes:")
+                    for el in inputs + checkboxes:
+                        el_id = el.get_attribute('id') or 'no-id'
+                        el_name = el.get_attribute('name') or 'no-name'
+                        el_type = el.get_attribute('type') or 'text'
+                        el_placeholder = el.get_attribute('placeholder') or ''
+                        print(f"  - id='{el_id}' name='{el_name}' type='{el_type}' placeholder='{el_placeholder}'")
+                except Exception as e:
+                    print(f"[DEBUG] Error dumping elements: {e}")
+
+                # Проверка на капчу/блок
+                if self.driver.find_elements(By.CSS_SELECTOR, '.g-recaptcha, .h-captcha, [data-sitekey]'):
+                    print("[FILL FORM] ✗ CAPTCHA detected! Need solver (2Captcha/AntiCaptcha)")
+                    # Здесь интегрируй обход капчи
+                    return
+
+                # Ждём первое поле с fallback селекторами
+                try:
+                    os.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,
+                                                               '#accountname, input[name="accountname"], input[placeholder*="account name" i]')))
+                    print("[FILL FORM] Form detected!")
+                except TimeoutException:
+                    print("[FILL FORM] ✗ Form still not loaded — possible Valve block or changed structure")
+                    # Сохрани скриншот для анализа
+                    self.driver.save_screenshot("form_not_loaded_debug.png")
+                    print("[DEBUG] Screenshot saved: form_not_loaded_debug.png")
+                    return
+
+                # Генерация creds (как раньше)
+                credentials = self.generate_credentials()
+                # ... (твой код)
+
+                # Селекторы с мощным fallback (2025-proof)
+                fields = [
+                    ('#accountname, input[name="accountname"], input[placeholder*="account name" i]',
+                     credentials['username']),
+                    ('#password, input[name="password"], input[placeholder*="password" i]', credentials['password']),
+                    ('#reenter_password, input[name="reenter_password"], input[placeholder*="confirm password" i]',
+                     credentials['password']),
+                    ('#email, input[name="email"], input[placeholder*="email" i]', credentials['email']),
+                    ('#reenter_email, input[name="reenter_email"], input[placeholder*="confirm email" i]',
+                     credentials['email'])
+                ]
+
+                # Имитация "просмотра" формы (один раз)
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight * 0.7);")  # Скролл на 70%
+                human_delay(800, 1500)  # 0.8-1.5 сек "чтения"
+                self.driver.execute_script("window.scrollTo(0, 0);")  # Обратно вверх
+                random_mouse_movement(self.driver, movements=2)  # Общие движения (не на каждое поле)
+                human_delay(300, 700)  # Короткая пауза
+
+                for selector, text in fields:
+                    try:
+                        print(f"[FILL FORM] Filling {selector}...")
+                        element = self.driver.find_element(By.CSS_SELECTOR, selector)  # Без wait, т.к. форма готова
+                        # Скролл только если нужно (проверяем visibility)
+                        if not element.is_displayed():
+                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+                            human_delay(200, 500)  # Короткая пауза после скролла
+
+                        # Плавный фокус + клик через ActionChains
+                        actions = ActionChains(self.driver)
+                        actions.move_to_element_with_offset(element, random.randint(-3, 3), random.randint(-3, 3))
+                        actions.pause(random.uniform(0.2, 0.5))
+                        actions.click(element)
+                        actions.perform()
+
+                        # Печать сразу после фокуса
+                        human_type(self.driver, selector, text, speed_profile='normal', typo_rate=0.05)
+                        human_delay(400, 800)  # Уменьшил: 0.4-0.8 сек после поля (переход к следующему)
+                    except Exception as e:
+                        print(f"[FILL FORM] Error in {selector}: {str(e)[:100]}")
+                        continue
+
+                # Имитация "проверки" заполненного
+                human_delay(1000, 2000)  # 1-2 сек "просмотр перед чекбоксом"
+                random_mouse_movement(self.driver, movements=1)  # Лёгкое движение
+
+                # Стелс-чекбокс (мой улучшенный метод)
+                stealth_checkbox_click(self.driver, '#accept_ssa, [name="accept_ssa"]')  # С fallback
+
+                # Submit (если нужно завершить)
+                try:
+                    print(f"[FILL FORM] Submitting form...")
+                    submit_btn = os.wait.until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, '#create_account, .btnv6_blue_hoverfade')))
+                    actions = ActionChains(self.driver)
+                    actions.move_to_element(submit_btn).pause(random.uniform(0.3, 0.7)).click().perform()
+                    print(f"[FILL FORM] Submitted!")
+                except Exception as e:
+                    print(f"[FILL FORM] Submit error: {str(e)[:100]}")
+
+                # Обход капчи (пример с 2Captcha — настрой API key)
+                # import twocaptcha  # Установи библиотеку
+                # solver = twocaptcha.TwoCaptcha('YOUR_API_KEY')
+                # try:
+                #     sitekey = self.driver.find_element(By.CSS_SELECTOR, '[data-sitekey]').get_attribute('data-sitekey')
+                #     result = solver.hcaptcha(sitekey=sitekey, url=self.driver.current_url)
+                #     self.driver.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{result["code"]}";')
+                #     # Callback или submit снова
+                # except:
+                #     print("[CAPTCHA] Failed to solve")
+
+                print(f"[FILL FORM] Done! Monitor for captcha or success.")
+                print(f"{'=' * 70}\n")
+
             # ============================================================
             # ТЕСТОВЫЙ РЕЖИМ - ОСТАНАВЛИВАЕМСЯ ЗДЕСЬ
             # ============================================================
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             print(f"[TEST MODE] Browser is ready on Steam!")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
             print(f"[+] All stealth features applied:")
-            print(f"   ✓ navigator.webdriver = undefined (via Firefox Extension)")
-            print(f"   ✓ Fingerprint injected via JavaScript")
-            print(f"   ✓ Cookies set ({len(cookies)} cookies)")
-            print(f"   ✓ localStorage filled ({len(storage_data)} items)")
-            print(f"   ✓ Anti-detection extension loaded (document_start)")
-            print(f"   ✓ On Steam join page: {self.driver.current_url}")
-            print(f"\n[*] You can now:")
-            print(f"   1. Open DevTools Console (F12) and type: navigator.webdriver")
-            print(f"   2. Should return: undefined (not true)")
-            print(f"   3. Check browser fingerprint (e.g., pixelscan.net)")
-            print(f"   4. Manually test Steam registration")
-            print(f"   5. Check for detection")
-            print(f"   6. Close browser when done")
             print(f"\n[WAIT] Browser will stay open until you close it")
-            print(f"{'='*70}\n")
+            print(f"{'=' * 70}\n")
 
             # ============================================================
             # БЕСКОНЕЧНОЕ ОЖИДАНИЕ - БРАУЗЕР НЕ ЗАКРЫВАЕТСЯ
@@ -891,6 +1126,7 @@ if __name__ == "__main__":
 
     # Парсим аргументы
     headless = "--headless" in sys.argv
+    fill_form = "--fill_form" in sys.argv
     no_proxy = "--no-proxy" in sys.argv
 
     # Настройка прокси
