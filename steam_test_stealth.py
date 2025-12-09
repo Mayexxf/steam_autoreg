@@ -474,7 +474,7 @@ def stealth_checkbox_click(driver, checkbox_selector):
 class SteamTestStealth:
     """Тестовый класс для проверки стелс-функционала БЕЗ регистрации на Steam"""
 
-    def __init__(self, proxy=None, headless=True, fill_form=True):
+    def __init__(self, proxy=None, headless=False, fill_form=True):
         self.proxy = proxy
         self.headless = headless
         self.fill_form = fill_form
@@ -535,6 +535,18 @@ class SteamTestStealth:
         return None
 
     def generate_credentials(self):
+        """Генерация случайных credentials"""
+        username = ''.join(random.choices(string.ascii_lowercase, k=8)) + str(random.randint(100, 999))
+        email = f"{username}@gmail.com"
+        password = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+
+        return {
+            "username": username,
+            "email": email,
+            "password": password
+        }
+
+    def static_credentials(self):
         """Генерация случайных credentials"""
         username = ''.join(random.choices(string.ascii_lowercase, k=8)) + str(random.randint(100, 999))
         email = f"{username}@gmail.com"
@@ -609,517 +621,188 @@ class SteamTestStealth:
             }
 
     def test_stealth(self):
-        """Тестирование стелс-функционала БЕЗ регистрации на Steam"""
-        print("=" * 70)
-        print(f"Steam Stealth Test (NO REGISTRATION) - FIREFOX")
-        print("=" * 70)
+        """Минималистичный стелс-тест Steam (без регистрации, с опциональным заполнением формы)"""
 
-        # Обновляем IP прокси и определяем геолокацию (если используется прокси)
+        # === Прокси и гео (минимальный лог) ===
         geo_config = None
-
-        # Пропускаем смену IP если используется HARDCODED_PROXY
-        if self.proxy and HARDCODED_PROXY:
-            print(f"\n[PROXY] Using HARDCODED_PROXY - skipping IP refresh")
-            print()
-        elif self.proxy and self.proxy_manager:
-            print(f"\n[PROXY] Refreshing IP before browser launch...")
-
-            # Используем новый MobileProxyManager
+        if self.proxy and not HARDCODED_PROXY and self.proxy_manager:
             result = self.proxy_manager.change_ip_and_get_geo(wait_time=3)
-
             if result.get('success'):
                 geo_config = result.get('geo')
-                print(f"[PROXY] Ready to use with new IP: {result['new_ip']}")
-            else:
-                print(f"[PROXY] Failed to change IP: {result.get('message')}")
-
-            print()
-        elif self.proxy:
-            # Fallback на старый метод если нет API ключа
-            print(f"\n[PROXY] Refreshing IP (legacy method)...")
-            refresh_result = refresh_proxy_ip()
-
-            # Определяем геолокацию по новому IP
-            if refresh_result and refresh_result.get('new_ip'):
-                new_ip = refresh_result['new_ip']
-                geo_config = detect_proxy_geo(new_ip)
-
-            print()
-
-        credentials = self.generate_credentials()
-        print(f"\n[TEST CREDS] (for display only, won't be used)")
-        print(f"  Email: {credentials['email']}")
-        print(f"  Username: {credentials['username']}")
-        print(f"  Password: {credentials['password']}")
 
         try:
-            print(f"\n[1/3] Launching Firefox with stealth...")
-
-            # ============================================
-            # FINGERPRINT GENERATION
-            # ============================================
+            # === Fingerprint + базовые настройки ===
             fingerprint_config = FingerprintGenerator.generate()
-            firefox_version = '133.0'  # Актуальная версия Firefox
-
-            # Для Firefox используем другой User-Agent
+            firefox_version = '133.0'
             user_agent = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{firefox_version}) Gecko/20100101 Firefox/{firefox_version}"
-
-            # Генерируем fingerprint скрипт (адаптируем для Firefox)
             fingerprint_script = FingerprintGenerator.get_injector_script(fingerprint_config, firefox_version)
 
-            print(f"[FINGERPRINT] Custom Generator")
-            print(f"  Viewport: {fingerprint_config['viewport']['width']}x{fingerprint_config['viewport']['height']}")
-            print(f"  Firefox: {firefox_version}")
-            print(f"  WebGL: {fingerprint_config['webgl']['vendor'].split('(')[1].split(')')[0]}")
-            print(
-                f"  Hardware: {fingerprint_config['hardware']['cores']} cores, {fingerprint_config['hardware']['memory']}GB RAM")
-            print(f"  Canvas noise: {fingerprint_config['canvas_noise']}")
+            locale = geo_config['locale'] if geo_config else 'en-US'
+            timezone_id = geo_config['timezone'] if geo_config else 'America/New_York'
 
-            # Определяем locale и timezone на основе геолокации прокси
-            if geo_config:
-                locale = geo_config['locale']
-                timezone_id = geo_config['timezone']
-                print(f"[GEO CONFIG] Using proxy geolocation:")
-                print(f"  Locale: {locale}")
-                print(f"  Timezone: {timezone_id}")
-                print(f"  Currency: {geo_config['currency']}")
-            else:
-                locale = 'en-US'
-                timezone_id = 'America/New_York'
-                print(f"[GEO CONFIG] Using default geolocation (en-US)")
-
-            # ============================================
-            # НАСТРОЙКА FIREFOX OPTIONS
-            # ============================================
+            # === Firefox options ===
             options = FirefoxOptions()
-
-            # User Agent
             options.set_preference("general.useragent.override", user_agent)
-
-            # Локаль и язык
             options.set_preference("intl.accept_languages", locale)
             options.set_preference("intl.locale.requested", locale)
-
-            # Timezone (Firefox не поддерживает прямую установку timezone через preferences)
-            # Будем устанавливать через JavaScript injection
-
-            # Viewport
             options.add_argument(f"--width={fingerprint_config['viewport']['width']}")
             options.add_argument(f"--height={fingerprint_config['viewport']['height']}")
-
-            # Anti-detection настройки для Firefox
             options.set_preference("dom.webdriver.enabled", False)
             options.set_preference("useAutomationExtension", False)
-
-            # WebGL
-            options.set_preference("webgl.disabled", False)
-            options.set_preference("webgl.force-enabled", True)
-
-            # WebRTC блокировка (МЯГКАЯ)
-            options.set_preference("media.peerconnection.enabled", True)
-            options.set_preference("media.peerconnection.ice.proxy_only", True)
-            options.set_preference("media.peerconnection.ice.default_address_only", True)
-
-            # Canvas fingerprint protection (отключаем встроенную защиту Firefox)
             options.set_preference("privacy.resistFingerprinting", False)
-
-            # Permissions
-            options.set_preference("permissions.default.geo", 1)  # Разрешить геолокацию
-
-            # Кеш
-            options.set_preference("browser.cache.disk.enable", False)
-            options.set_preference("browser.cache.memory.enable", False)
-
-            # Headless режим (если нужен)
             if self.headless:
                 options.add_argument("--headless")
 
-            # ============================================
-            # НАСТРОЙКА ПРОКСИ ЧЕРЕЗ SELENIUM-WIRE
-            # ============================================
+            # === Прокси ===
             seleniumwire_options = {}
             proxy_config = self._parse_proxy_for_firefox()
-
             if proxy_config:
-                # Формируем URL прокси с аутентификацией для selenium-wire
-                if proxy_config.get('username') and proxy_config.get('password'):
-                    # Прокси с аутентификацией
-                    if proxy_config['protocol'] == 'socks5':
-                        proxy_url = f"socks5://{proxy_config['username']}:{proxy_config['password']}@{proxy_config['host']}:{proxy_config['port']}"
-                    else:  # http
-                        proxy_url = f"http://{proxy_config['username']}:{proxy_config['password']}@{proxy_config['host']}:{proxy_config['port']}"
-                else:
-                    # Прокси без аутентификации
-                    if proxy_config['protocol'] == 'socks5':
-                        proxy_url = f"socks5://{proxy_config['host']}:{proxy_config['port']}"
-                    else:  # http
-                        proxy_url = f"http://{proxy_config['host']}:{proxy_config['port']}"
-
-                # Настройки для selenium-wire
+                auth = f"{proxy_config['username']}:{proxy_config['password']}@" if proxy_config.get('username') else ""
+                protocol = "socks5" if proxy_config['protocol'] == 'socks5' else "http"
+                proxy_url = f"{protocol}://{auth}{proxy_config['host']}:{proxy_config['port']}"
                 seleniumwire_options = {
-                    'proxy': {
-                        'http': proxy_url,
-                        'https': proxy_url,
-                        'no_proxy': 'localhost,127.0.0.1'
-                    },
-                    'suppress_connection_errors': False,  # Показывать ошибки подключения
-                    'verify_ssl': False  # Отключить проверку SSL сертификатов для прокси
+                    'proxy': {'http': proxy_url, 'https': proxy_url, 'no_proxy': 'localhost,127.0.0.1'},
+                    'verify_ssl': False
                 }
 
-            # ============================================
-            # ЗАГРУЗКА ANTI-DETECTION EXTENSION
-            # ============================================
-            extension_path = os.path.abspath("firefox_antidetect_extension")
-            if os.path.exists(extension_path):
-                print(f"[EXTENSION] Loading anti-detection extension from: {extension_path}")
-            else:
-                print(f"[EXTENSION] WARNING: Extension not found at {extension_path}")
-
-            # ============================================
-            # ЗАПУСК FIREFOX С SELENIUM-WIRE
-            # ============================================
-
-            self.driver = webdriver.Firefox(
-                options=options,
-                seleniumwire_options=seleniumwire_options
-            )
-
-            # Устанавливаем размер окна
-            self.driver.set_window_size(
-                fingerprint_config['viewport']['width'],
-                fingerprint_config['viewport']['height']
-            )
-
-            # Устанавливаем таймауты
+            # === Запуск браузера ===
+            self.driver = webdriver.Firefox(options=options, seleniumwire_options=seleniumwire_options)
+            self.driver.set_window_size(fingerprint_config['viewport']['width'], fingerprint_config['viewport']['height'])
             self.driver.set_page_load_timeout(self.page_timeout)
             self.driver.implicitly_wait(10)
 
-            # ============================================
-            # УСТАНОВКА ANTI-DETECTION EXTENSION
-            # ============================================
+            # === Антидетект расширение ===
+            extension_path = os.path.abspath("firefox_antidetect_extension")
             if os.path.exists(extension_path):
                 try:
-                    addon_id = self.driver.install_addon(extension_path, temporary=True)
-                    print(f"[EXTENSION] ✓ Anti-detection extension installed (ID: {addon_id})")
-                except Exception as e:
-                    print(f"[EXTENSION] ✗ Failed to install extension: {str(e)[:100]}")
-            else:
-                print(f"[EXTENSION] ✗ Extension directory not found")
+                    self.driver.install_addon(extension_path, temporary=True)
+                except:
+                    pass  # Тихо, если не загрузилось
 
-            print(f"[FIREFOX] Browser launched successfully")
-
-            # ============================================
-            # COOKIES GENERATION
-            # ============================================
-            cookie_gen = CookieGenerator()
-            cookies = cookie_gen.generate_realistic_cookies(num_sites=7)
-
-            # Открываем страницу /join для работы с localStorage
-            print(f"\n[2/3] Opening Steam /join page...")
-            try:
-                page_start = time.time()
-                self.driver.get("https://store.steampowered.com/join/")
-                page_time = time.time() - page_start
-                print(f"[PAGE LOAD] ✓ Steam page loaded ({page_time:.2f}s)")
-            except Exception as e:
-                print(f"[PAGE LOAD] ✗ Failed to load Steam page")
-                print(f"[ERROR] {str(e)[:200]}")
-                raise
+            # === Открытие страницы ===
+            self.driver.get("https://store.steampowered.com/join/")
             time.sleep(self.wait_after_load)
 
-            # ============================================
-            # ПРОВЕРКА ANTI-DETECTION
-            # ============================================
-            # Проверяем что navigator.webdriver успешно скрыт
-            try:
-                webdriver_value = self.driver.execute_script("return navigator.webdriver")
-                if webdriver_value is None:
-                    print(f"[ANTI-DETECT] ✓ navigator.webdriver = undefined (SUCCESS)")
-                else:
-                    print(f"[ANTI-DETECT] ✗ navigator.webdriver = {webdriver_value} (DETECTED)")
-            except Exception as e:
-                print(f"[ANTI-DETECT] Warning: Could not check - {str(e)[:100]}")
-
-            # ============================================
-            # ИНЖЕКТ FINGERPRINT через JavaScript (После загрузки страницы)
-            # ============================================
-            # Firefox не поддерживает CDP, поэтому инжектим через execute_script
-            try:
-                self.driver.execute_script(fingerprint_script)
-                print(f"[FINGERPRINT] Injected via JavaScript")
-            except Exception as e:
-                print(f"[FINGERPRINT] Warning: Could not inject - {str(e)[:100]}")
-
-            # Устанавливаем timezone через JavaScript
+            # === Инжект fingerprint + timezone ===
+            self.driver.execute_script(fingerprint_script)
             timezone_script = f"""
-                // Override timezone
-                const originalDateTimeFormat = Intl.DateTimeFormat;
-                Intl.DateTimeFormat = function(...args) {{
-                    if (args.length === 0 || !args[0]) {{
-                        args[0] = '{locale}';
-                    }}
-                    return new originalDateTimeFormat(...args);
-                }};
-
-                // Override timezone detection
+                const orig = Intl.DateTimeFormat;
+                Intl.DateTimeFormat = function(...a) {{ if (!a[0]) a[0] = '{locale}'; return new orig(...a); }};
                 Object.defineProperty(Intl.DateTimeFormat.prototype, 'resolvedOptions', {{
                     value: function() {{
-                        const options = Object.getOwnPropertyDescriptor(
-                            originalDateTimeFormat.prototype,
-                            'resolvedOptions'
-                        ).value.call(this);
-                        options.timeZone = '{timezone_id}';
-                        return options;
+                        let o = Object.getOwnPropertyDescriptor(orig.prototype, 'resolvedOptions').value.call(this);
+                        o.timeZone = '{timezone_id}';
+                        return o;
                     }}
                 }});
             """
-            try:
-                self.driver.execute_script(timezone_script)
-                print(f"[TIMEZONE] Set to {timezone_id}")
-            except Exception as e:
-                print(f"[TIMEZONE] Warning: Could not set - {str(e)[:100]}")
+            self.driver.execute_script(timezone_script)
 
-            # Добавляем cookies (Selenium требует определенный формат)
-            print(f"[COOKIES] Injecting cookies...")
+            # === Cookies ===
+            cookies = CookieGenerator().generate_realistic_cookies(num_sites=7)
             for cookie in cookies:
-                # Selenium требует чтобы мы были на домене перед добавлением cookie
                 if 'steampowered' in cookie.get('domain', ''):
                     try:
-                        # Преобразуем формат cookie для Selenium
-                        selenium_cookie = {
-                            'name': cookie['name'],
-                            'value': cookie['value'],
+                        sel_cookie = {
+                            'name': cookie['name'], 'value': cookie['value'],
                             'domain': cookie.get('domain', '.steampowered.com'),
-                            'path': cookie.get('path', '/'),
-                            'secure': cookie.get('secure', True)
+                            'path': cookie.get('path', '/'), 'secure': cookie.get('secure', True)
                         }
-                        # Firefox не поддерживает httpOnly через add_cookie
                         if 'expiry' in cookie:
-                            selenium_cookie['expiry'] = cookie['expiry']
-
-                        self.driver.add_cookie(selenium_cookie)
-                    except Exception as e:
-                        # Игнорируем ошибки добавления отдельных cookies
+                            sel_cookie['expiry'] = cookie['expiry']
+                        self.driver.add_cookie(sel_cookie)
+                    except:
                         pass
 
-            domains_count = len(set(c['domain'] for c in cookies))
-            print(f"[COOKIES] Added {len(cookies)} cookies from {domains_count} domains")
+            # === LocalStorage ===
+            storage_data = StorageGenerator().generate_full_storage()
+            if self.driver.execute_script("return typeof(Storage) !== 'undefined'"):
+                self.driver.execute_script(StorageGenerator().get_storage_script(storage_data))
 
-            # ============================================
-            # LOCALSTORAGE GENERATION
-            # ============================================
-            storage_gen = StorageGenerator()
-            storage_data = storage_gen.generate_full_storage()
+            # === Проверка webdriver ===
+            wd = self.driver.execute_script("return navigator.webdriver")
+            status = "undefined ✓" if wd is None else f"{wd} ✗"
 
-            browser_age_days = (storage_gen.current_time - storage_gen.install_timestamp) // 86400
-            print(f"[STORAGE] Generated localStorage (Browser age: {browser_age_days} days, {len(storage_data)} items)")
+            print(f"\n{'=' * 60}")
+            print(f"[TEST] Steam page loaded | webdriver: {status}")
+            print(f"[TEST] Stealth ready — check console: navigator.webdriver")
+            print(f"{'=' * 60}\n")
 
-            # Заполняем localStorage через JavaScript с проверкой доступности
-            try:
-                # Проверяем доступен ли localStorage
-                ls_available = self.driver.execute_script("return typeof(Storage) !== 'undefined'")
-                if ls_available:
-                    storage_script = storage_gen.get_storage_script(storage_data)
-                    self.driver.execute_script(storage_script)
-                    print(f"[STORAGE] localStorage filled with {len(storage_data)} items")
-                else:
-                    print(f"[STORAGE] localStorage not available on this page - skipping")
-            except Exception as e:
-                print(f"[STORAGE] Warning: Could not fill localStorage - {str(e)[:100]}")
-
-            # Перезагружаем страницу чтобы применить cookies
-            # print(f"[3/3] Reloading page to apply cookies...")
-            # self.driver.get("https://store.steampowered.com/join/")
-            # time.sleep(self.wait_after_load)
-
-            # Проверяем что navigator.webdriver все еще скрыт после перезагрузки
-            try:
-                webdriver_value = self.driver.execute_script("return navigator.webdriver")
-                if webdriver_value is None:
-                    print(f"[ANTI-DETECT] ✓ navigator.webdriver still undefined after reload")
-                else:
-                    print(f"[ANTI-DETECT] ✗ navigator.webdriver = {webdriver_value} after reload")
-            except:
-                pass
-
-            # Повторно инжектим fingerprint и timezone после перезагрузки
-            try:
-                self.driver.execute_script(fingerprint_script)
-                self.driver.execute_script(timezone_script)
-                print(f"[FINGERPRINT] Re-injected after reload")
-            except:
-                pass
-
+            # === Опциональное заполнение формы ===
             if self.fill_form:
                 from selenium.webdriver.support.ui import WebDriverWait
                 from selenium.webdriver.support import expected_conditions as EC
+                from selenium.webdriver.common.by import By
+                from src.captcha.hcaptcha_stealth import stealth_hcaptcha_checkbox_click
 
-                print(f"\n{'=' * 70}")
-                print(f"[FILL FORM] Starting human-like form filling... (OPTIMIZED for Dec 2025)")
-                print(f"{'=' * 70}")
+                wait = WebDriverWait(self.driver, 15)
+                actions = ActionChains(self.driver)
 
-                # Ждём готовность DOM + возможный динамический рендер
+                credentials = self.generate_credentials()
+
+                # Скролл + имитация просмотра
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight * 0.6);")
+                human_delay(1000, 2000)
+                self.driver.execute_script("window.scrollTo(0, 0);")
+                random_mouse_movement(self.driver, movements=2)
+
+                # Заполнение email
+                for selector, value in [
+                    ('#email, input[name="email"]', credentials['email']),
+                    ('#reenter_email, input[name="reenter_email"]', credentials['email'])
+                ]:
+                    el = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                    human_delay(300, 600)
+                    actions.move_to_element_with_offset(el, random.randint(-5, 5), random.randint(-5, 5)).click().perform()
+                    human_type(self.driver, selector, value)
+                    human_delay(500, 1000)
+
+                # Чекбокс согласия (если есть)
                 try:
-                    self.driver.execute_script("return document.readyState === 'complete'")  # Полная загрузка
-                    time.sleep(3)  # Доп. пауза для React-рендера Valve
-                    print("[FILL FORM] DOM ready, waiting for form elements...")
+                    agree = self.driver.find_element(By.CSS_SELECTOR, '#i_agree_check, [name="i_agree_check"]')
+                    actions.move_to_element(agree).click().perform()
                 except:
                     pass
 
-                # Диагностика: выведем все inputs (обязательно для дебага в 2025!)
+                # hCaptcha чекбокс
+                human_delay(1500, 3000)
+                random_mouse_movement(self.driver, movements=2)
+                if not stealth_hcaptcha_checkbox_click(self.driver, timeout_attempts=4):
+                    print("[CAPTCHA] Не удалось кликнуть по hCaptcha")
+                    self.driver.save_screenshot("captcha_failed.png")
+
+                # Submit
                 try:
-                    inputs = self.driver.find_elements(By.TAG_NAME, 'input')
-                    checkboxes = self.driver.find_elements(By.TAG_NAME, 'input[type="checkbox"]')
-                    print(f"[DEBUG] Found {len(inputs)} input fields + {len(checkboxes)} checkboxes:")
-                    for el in inputs + checkboxes:
-                        el_id = el.get_attribute('id') or 'no-id'
-                        el_name = el.get_attribute('name') or 'no-name'
-                        el_type = el.get_attribute('type') or 'text'
-                        el_placeholder = el.get_attribute('placeholder') or ''
-                        print(f"  - id='{el_id}' name='{el_name}' type='{el_type}' placeholder='{el_placeholder}'")
-                except Exception as e:
-                    print(f"[DEBUG] Error dumping elements: {e}")
+                    btn = wait.until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, '#createAccountButton, .btnv6_blue_hoverfade')))
+                    actions.move_to_element(btn).pause(random.uniform(0.4, 1.0)).click().perform()
+                    print("[FORM] Form submitted")
+                except:
+                    print("[FORM] Submit button not found/clickable")
 
-                # Проверка на капчу/блок
-                if self.driver.find_elements(By.CSS_SELECTOR, '.g-recaptcha, .h-captcha, [data-sitekey]'):
-                    print("[FILL FORM] ✗ CAPTCHA detected! Need solver (2Captcha/AntiCaptcha)")
-                    # Здесь интегрируй обход капчи
-                    return
-
-                # Ждём первое поле с fallback селекторами
-                try:
-                    os.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,
-                                                               '#accountname, input[name="accountname"], input[placeholder*="account name" i]')))
-                    print("[FILL FORM] Form detected!")
-                except TimeoutException:
-                    print("[FILL FORM] ✗ Form still not loaded — possible Valve block or changed structure")
-                    # Сохрани скриншот для анализа
-                    self.driver.save_screenshot("form_not_loaded_debug.png")
-                    print("[DEBUG] Screenshot saved: form_not_loaded_debug.png")
-                    return
-
-                # Генерация creds (как раньше)
-                credentials = self.generate_credentials()
-                # ... (твой код)
-
-                # Селекторы с мощным fallback (2025-proof)
-                fields = [
-                    ('#accountname, input[name="accountname"], input[placeholder*="account name" i]',
-                     credentials['username']),
-                    ('#password, input[name="password"], input[placeholder*="password" i]', credentials['password']),
-                    ('#reenter_password, input[name="reenter_password"], input[placeholder*="confirm password" i]',
-                     credentials['password']),
-                    ('#email, input[name="email"], input[placeholder*="email" i]', credentials['email']),
-                    ('#reenter_email, input[name="reenter_email"], input[placeholder*="confirm email" i]',
-                     credentials['email'])
-                ]
-
-                # Имитация "просмотра" формы (один раз)
-                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight * 0.7);")  # Скролл на 70%
-                human_delay(800, 1500)  # 0.8-1.5 сек "чтения"
-                self.driver.execute_script("window.scrollTo(0, 0);")  # Обратно вверх
-                random_mouse_movement(self.driver, movements=2)  # Общие движения (не на каждое поле)
-                human_delay(300, 700)  # Короткая пауза
-
-                for selector, text in fields:
-                    try:
-                        print(f"[FILL FORM] Filling {selector}...")
-                        element = self.driver.find_element(By.CSS_SELECTOR, selector)  # Без wait, т.к. форма готова
-                        # Скролл только если нужно (проверяем visibility)
-                        if not element.is_displayed():
-                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                            human_delay(200, 500)  # Короткая пауза после скролла
-
-                        # Плавный фокус + клик через ActionChains
-                        actions = ActionChains(self.driver)
-                        actions.move_to_element_with_offset(element, random.randint(-3, 3), random.randint(-3, 3))
-                        actions.pause(random.uniform(0.2, 0.5))
-                        actions.click(element)
-                        actions.perform()
-
-                        # Печать сразу после фокуса
-                        human_type(self.driver, selector, text, speed_profile='normal', typo_rate=0.05)
-                        human_delay(400, 800)  # Уменьшил: 0.4-0.8 сек после поля (переход к следующему)
-                    except Exception as e:
-                        print(f"[FILL FORM] Error in {selector}: {str(e)[:100]}")
-                        continue
-
-                # Имитация "проверки" заполненного
-                human_delay(1000, 2000)  # 1-2 сек "просмотр перед чекбоксом"
-                random_mouse_movement(self.driver, movements=1)  # Лёгкое движение
-
-                # Стелс-чекбокс (мой улучшенный метод)
-                stealth_checkbox_click(self.driver, '#accept_ssa, [name="accept_ssa"]')  # С fallback
-
-                # Submit (если нужно завершить)
-                try:
-                    print(f"[FILL FORM] Submitting form...")
-                    submit_btn = os.wait.until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, '#create_account, .btnv6_blue_hoverfade')))
-                    actions = ActionChains(self.driver)
-                    actions.move_to_element(submit_btn).pause(random.uniform(0.3, 0.7)).click().perform()
-                    print(f"[FILL FORM] Submitted!")
-                except Exception as e:
-                    print(f"[FILL FORM] Submit error: {str(e)[:100]}")
-
-                # Обход капчи (пример с 2Captcha — настрой API key)
-                # import twocaptcha  # Установи библиотеку
-                # solver = twocaptcha.TwoCaptcha('YOUR_API_KEY')
-                # try:
-                #     sitekey = self.driver.find_element(By.CSS_SELECTOR, '[data-sitekey]').get_attribute('data-sitekey')
-                #     result = solver.hcaptcha(sitekey=sitekey, url=self.driver.current_url)
-                #     self.driver.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{result["code"]}";')
-                #     # Callback или submit снова
-                # except:
-                #     print("[CAPTCHA] Failed to solve")
-
-                print(f"[FILL FORM] Done! Monitor for captcha or success.")
-                print(f"{'=' * 70}\n")
-
-            # ============================================================
-            # ТЕСТОВЫЙ РЕЖИМ - ОСТАНАВЛИВАЕМСЯ ЗДЕСЬ
-            # ============================================================
-            print(f"\n{'=' * 70}")
-            print(f"[TEST MODE] Browser is ready on Steam!")
-            print(f"{'=' * 70}")
-            print(f"[+] All stealth features applied:")
-            print(f"\n[WAIT] Browser will stay open until you close it")
-            print(f"{'=' * 70}\n")
-
-            # ============================================================
-            # БЕСКОНЕЧНОЕ ОЖИДАНИЕ - БРАУЗЕР НЕ ЗАКРЫВАЕТСЯ
-            # ============================================================
+            # === Бесконечное ожидание (тестовый режим) ===
+            print("[WAIT] Браузер открыт — закрывай вручную")
             try:
-                # Ждем пока пользователь не закроет браузер
                 while True:
-                    try:
-                        # Проверяем что драйвер все еще активен
-                        _ = self.driver.current_url
-                        time.sleep(1)
-                    except WebDriverException:
-                        # Браузер закрыт
-                        print(f"\n[INFO] Browser closed")
-                        break
-            except KeyboardInterrupt:
-                print("\n[INFO] Interrupted by user (Ctrl+C)")
-            except Exception as e:
-                print(f"\n[ERROR] {str(e)[:100]}")
-
-            print(f"\n[INFO] Test session ended")
+                    time.sleep(1)
+                    self.driver.current_url  # Проверка активности
+            except:
+                print("[INFO] Браузер закрыт")
+            finally:
+                if self.driver:
+                    self.driver.quit()
 
         except Exception as e:
-            print(f"\n[ERROR] Failed to launch browser: {e}")
+            print(f"[ERROR] {e}")
             import traceback
             traceback.print_exc()
         finally:
-            # Закрываем браузер
             if self.driver:
                 try:
                     self.driver.quit()
-                    print("[INFO] Browser closed")
                 except:
                     pass
-
 
 if __name__ == "__main__":
     import sys
@@ -1129,6 +812,8 @@ if __name__ == "__main__":
     fill_form = "--fill_form" in sys.argv
     no_proxy = "--no-proxy" in sys.argv
 
+    if "-u" not in sys.argv:
+        print("[TIP] Для вывода в реальном времени запускай: python -u steam_test_stealth.py")
     # Настройка прокси
     if no_proxy:
         proxy = "DISABLED"

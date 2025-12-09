@@ -422,27 +422,6 @@ class UniversalCaptchaSolver:
                          enterprise_payload: Optional[Dict],
                          max_attempts: int, poll_interval: int) -> Optional[str]:
         """Решение через YesCaptcha (fallback)"""
-        try:
-            from src.captcha.yescaptcha_solver import YesCaptchaSolver
-
-            solver = YesCaptchaSolver(
-                client_key=self.api_key,
-                debug=self.debug
-            )
-
-            return solver.solve_hcaptcha(
-                website_url=website_url,
-                website_key=website_key,
-                user_agent=user_agent,
-                is_invisible=is_invisible,
-                enterprise_payload=enterprise_payload,
-                max_attempts=max_attempts,
-                poll_interval=poll_interval
-            )
-
-        except Exception as e:
-            print(f"❌ Ошибка YesCaptcha: {e}")
-            return None
 
     def _solve_azcaptcha(self, website_url: str, website_key: str,
                         user_agent: Optional[str],
