@@ -10,7 +10,9 @@
       "WebFetch(domain:azcaptcha.com)",
       "WebFetch(domain:store.steampowered.com)",
       "WebFetch(domain:2captcha.com)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(chcp 65001)",
+      "WebFetch(domain:ipapi.co)"
     ],
     "deny": [],
     "ask": []

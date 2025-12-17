@@ -1,0 +1,99 @@
+# Microsoft Graph OAuth Configuration
+# ====================================
+# Скопируйте этот файл как msgraph_config.txt и заполните значения
+# 
+# Получение client_id и client_secret:
+# 1. Войдите на https://portal.azure.com
+# 2. Azure Active Directory → App registrations → New registration
+# 3. Supported account types: "Personal Microsoft accounts only" или 
+#    "Accounts in any organizational directory and personal Microsoft accounts"
+# 4. Redirect URI: Web → http://localhost:8080/callback
+# 5. После создания: Overview → Application (client) ID → это client_id
+# 6. Certificates & secrets → New client secret → Value → это client_secret (копируйте СРАЗУ!)
+# 7. API permissions → Add → Microsoft Graph → Delegated:
+#    - offline_access (ОБЯЗАТЕЛЬНО!)
+#    - Mail.Read
+#    - Mail.ReadBasic  
+#    - User.Read
+
+# ============================================
+# AZURE APPLICATION (из Azure Portal)
+# ============================================
+
+# Application (client) ID (UUID формат)
+client_id=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# Client Secret (создаётся в Certificates & secrets)
+# ВАЖНО: Скопируйте Value сразу после создания - он показывается только один раз!
+client_secret=your_client_secret_value_here
+
+# Tenant ID
+# - "consumers" - только личные аккаунты (@outlook.com, @hotmail.com)
+# - "common" - личные + корпоративные
+# - "organizations" - только корпоративные
+# - "{tenant-id}" - конкретная организация
+tenant=consumers
+
+# Redirect URI (должен совпадать с настройками в Azure Portal)
+redirect_uri=http://localhost:8080/callback
+
+# Scopes (через пробел)
+# offline_access - КРИТИЧЕСКИ ВАЖЕН для получения refresh_token!
+scopes=offline_access openid profile email Mail.Read Mail.ReadBasic User.Read
+
+# ============================================
+# MICROSOFT ACCOUNT (учётные данные)
+# ============================================
+
+# Email аккаунта Microsoft
+email=your_email@outlook.com
+
+# Пароль аккаунта
+password=your_password_here
+
+# ============================================
+# PROXY (опционально)
+# ============================================
+
+# Формат: user:pass@host:port или просто host:port
+# Рекомендуется: residential или mobile прокси для обхода блокировок
+proxy=
+
+# ============================================
+# CAPTCHA SOLVING (опционально)
+# ============================================
+
+# Сервис решения капчи: 2captcha, capsolver, anticaptcha
+captcha_service=2captcha
+
+# API ключ сервиса капчи
+# 2Captcha: https://2captcha.com/enterpage → Настройки → API Key
+captcha_api_key=
+
+# ============================================
+# STEALTH SETTINGS
+# ============================================
+
+# Скрытый режим браузера (без GUI)
+# true - headless, false - с окном (рекомендуется для отладки)
+headless=false
+
+# Включить случайные задержки (имитация человека)
+random_delays=true
+
+# Включить человекоподобный ввод текста
+human_typing=true
+
+# ============================================
+# ADVANCED (для разработчиков)
+# ============================================
+
+# Режим отладки (подробный вывод)
+debug=false
+
+# Таймаут операций (секунды)
+timeout=60
+
+# User-Agent (если пусто - генерируется автоматически)
+user_agent=
+

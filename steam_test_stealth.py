@@ -76,7 +76,7 @@ from src.proxy.mobileproxy_manager import MobileProxyManager
 #   HARDCODED_PROXY = "185.162.128.75:9528"
 #   HARDCODED_PROXY = "http://user:pass@proxy.example.com:3128"
 #
-HARDCODED_PROXY = "yB9Ryx:BAU1FUpyp2yb:nproxy.site:12392"  # Замените None на строку с вашим прокси
+HARDCODED_PROXY = "MPzEefwWaIUi:tc6aWZqR:pool.proxy.market:10000"  # Замените None на строку с вашим прокси
 
 
 # ============================================================================

@@ -38,15 +38,21 @@ class MobileProxyManager:
         if proxy_key:
             return proxy_key.strip()
 
-        # Пробуем загрузить из файла
-        try:
-            with open("mobileproxy_config.txt", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        return line
-        except FileNotFoundError:
-            pass
+        # Пробуем загрузить из файла (несколько возможных путей)
+        config_paths = [
+            "config/mobileproxy_config.txt",
+            "mobileproxy_config.txt",
+        ]
+        
+        for config_path in config_paths:
+            try:
+                with open(config_path, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            return line
+            except FileNotFoundError:
+                continue
 
         return None
 

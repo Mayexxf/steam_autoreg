@@ -3,6 +3,7 @@
 """
 Outlook Account Creator - Playwright + Stealth версия
 Полностью автоматическое создание аккаунта с обходом PerimeterX
+Интегрированы stealth-модули из steam_test_stealth.py
 """
 import sys
 import os
@@ -11,6 +12,7 @@ import random
 import string
 import asyncio
 import math
+import requests
 from typing import Optional, Dict, Any, List, Tuple
 
 # Playwright
@@ -35,9 +37,34 @@ except ImportError:
     print("[WARN] pyautogui не установлен. Установите: pip install pyautogui")
 
 # ============================================================================
+# STEALTH МОДУЛИ (из steam_test_stealth.py)
+# ============================================================================
+try:
+    from src.stealth.fingerprint_generator import FingerprintGenerator
+    from src.stealth.cookie_generator import CookieGenerator
+    from src.stealth.storage_generator import StorageGenerator
+    from src.stealth.human_typing import HumanTypist
+    from src.stealth.geo_config import get_geo_config, enrich_geo_config
+    STEALTH_MODULES_AVAILABLE = True
+    print("[STEALTH] ✓ Stealth modules loaded (fingerprint, cookies, storage, human_typing)")
+except ImportError as e:
+    STEALTH_MODULES_AVAILABLE = False
+    print(f"[WARN] Stealth modules not available: {e}")
+
+# ============================================================================
+# MOBILE PROXY MANAGER (ротация IP)
+# ============================================================================
+try:
+    from src.proxy.mobileproxy_manager import MobileProxyManager
+    MOBILEPROXY_AVAILABLE = True
+except ImportError:
+    MOBILEPROXY_AVAILABLE = False
+    print("[WARN] MobileProxyManager not available")
+
+# ============================================================================
 # КОНФИГУРАЦИЯ
 # ============================================================================
-HARDCODED_PROXY = "yB9Ryx:BAU1FUpyp2yb@nproxy.site:12392"
+HARDCODED_PROXY = "MPzEefwWaIUi:tc6aWZqR:pool.proxy.market:10000"
 
 # Задержки (в миллисекундах)
 TYPING_DELAY = (40, 120)       # Между символами
@@ -193,13 +220,61 @@ class OutlookPlaywrightCreator:
     MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June",
                    "July", "August", "September", "October", "November", "December"]
 
-    def __init__(self, proxy: str = None, headless: bool = False):
+    def __init__(self, proxy: str = None, headless: bool = False, rotate_ip: bool = False):
         self.proxy = proxy or HARDCODED_PROXY
         self.headless = headless
+        self.rotate_ip = rotate_ip  # Ротировать IP перед каждой регистрацией
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.playwright = None
+        self.proxy_manager = None
+        self.geo_config = None  # Будет заполнено при ротации IP или в _setup_browser
+
+        # Инициализируем MobileProxyManager если доступен
+        if MOBILEPROXY_AVAILABLE and self.rotate_ip:
+            try:
+                self.proxy_manager = MobileProxyManager()
+                print("[PROXY] ✓ MobileProxyManager initialized")
+            except Exception as e:
+                print(f"[PROXY] MobileProxyManager failed: {e}")
+                self.proxy_manager = None
+
+    async def _rotate_ip(self) -> bool:
+        """Ротирует IP мобильного прокси перед регистрацией"""
+        if not self.proxy_manager:
+            print("[PROXY] IP rotation not available (no proxy manager)")
+            return False
+
+        print("\n" + "=" * 60)
+        print("[PROXY] РОТАЦИЯ IP ПЕРЕД РЕГИСТРАЦИЕЙ")
+        print("=" * 60)
+
+        # Запускаем sync метод в executor
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self.proxy_manager.change_ip_and_get_geo(wait_time=5)
+        )
+
+        if result.get('success'):
+            new_ip = result.get('new_ip', 'unknown')
+            geo = result.get('geo', {})
+
+            print(f"[PROXY] ✓ Новый IP: {new_ip}")
+            if geo.get('country'):
+                print(
+                    f"[PROXY] ✓ Страна: {geo['country']}, {geo.get('city', '')}")
+
+            # Сохраняем geo_config для использования в браузере
+            if geo.get('success'):
+                self.geo_config = geo
+
+            return True
+        else:
+            print(
+                f"[PROXY] ✗ Ротация не удалась: {result.get('message', 'unknown error')}")
+            return False
 
     def _parse_proxy(self) -> Optional[Dict[str, Any]]:
         """Парсит строку прокси"""
@@ -259,17 +334,94 @@ class OutlookPlaywrightCreator:
             "email": f"{username}@outlook.com"
         }
 
+    async def _detect_proxy_geo(self) -> Optional[Dict]:
+        """Определяет геолокацию по IP прокси"""
+        if not self.proxy:
+            return None
+
+        try:
+            # Парсим прокси для запроса
+            proxy_config = self._parse_proxy()
+            if not proxy_config:
+                return None
+
+            # Используем ip-api.com для определения геолокации
+            # Делаем запрос через прокси
+            proxies = {
+                'http': proxy_config['server'].replace('http://', ''),
+                'https': proxy_config['server'].replace('http://', '')
+            }
+
+            # Простой запрос без прокси (определяем IP)
+            response = requests.get(
+                "http://ip-api.com/json/?fields=status,country,countryCode,city,timezone,query",
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('status') == 'success':
+                    country = data.get('country', 'United States')
+                    geo_config = get_geo_config(country)
+                    geo_config = enrich_geo_config(geo_config)
+
+                    # Добавляем информацию из API
+                    geo_config['detected_ip'] = data.get('query', 'unknown')
+                    geo_config['city'] = data.get('city', '')
+
+                    if data.get('timezone'):
+                        geo_config['timezone'] = data['timezone']
+
+                    print(
+                        f"[GEO] Detected: {country}, {geo_config.get('city', '')}")
+                    print(
+                        f"[GEO] Timezone: {geo_config['timezone']}, Locale: {geo_config['locale']}")
+                    return geo_config
+        except Exception as e:
+            print(f"[GEO] Detection failed: {e}")
+
+        # Fallback to default US config
+        return enrich_geo_config(get_geo_config('United States')) if STEALTH_MODULES_AVAILABLE else None
+
     async def _setup_browser(self):
-        """Настраивает браузер с stealth"""
+        """Настраивает браузер с полным stealth (FingerprintGenerator + Cookies + Storage)"""
         self.playwright = await async_playwright().start()
 
-        # Выбираем случайный viewport
-        viewport = random.choice(VIEWPORT_OPTIONS)
+        # === ОПРЕДЕЛЕНИЕ ГЕОЛОКАЦИИ ===
+        # Используем geo_config от ротации IP если уже есть, иначе определяем
+        if not hasattr(self, 'geo_config') or not self.geo_config:
+            self.geo_config = await self._detect_proxy_geo() if STEALTH_MODULES_AVAILABLE else None
+
+        # === ГЕНЕРАЦИЯ FINGERPRINT ===
+        if STEALTH_MODULES_AVAILABLE:
+            self.fingerprint_config = FingerprintGenerator.generate(
+                browser_type='chrome')
+            viewport = self.fingerprint_config['viewport']
+            chrome_version = "131.0.0.0"  # Актуальная версия
+
+            # Генерируем fingerprint script
+            self.fingerprint_script = FingerprintGenerator.get_injector_script(
+                self.fingerprint_config,
+                browser_version=chrome_version,
+                browser_type='chrome'
+            )
+
+            print(f"[FINGERPRINT] Generated:")
+            print(
+                f"  WebGL: {self.fingerprint_config['webgl']['vendor'][:30]}...")
+            print(
+                f"  Hardware: {self.fingerprint_config['hardware']['cores']} cores, {self.fingerprint_config['hardware']['memory']}GB")
+            print(f"  Canvas noise: {self.fingerprint_config['canvas_noise']}")
+        else:
+            viewport = random.choice(VIEWPORT_OPTIONS)
+            chrome_version = "131.0.0.0"
+            self.fingerprint_config = None
+            self.fingerprint_script = None
 
         # Прокси
         proxy_config = self._parse_proxy()
 
-        print(f"[BROWSER] Запуск Chromium (Playwright)...")
+        print(f"[BROWSER] Запуск Chromium (Playwright + Full Stealth)...")
         print(f"[BROWSER] Viewport: {viewport['width']}x{viewport['height']}")
         if proxy_config:
             print(f"[BROWSER] Proxy: {proxy_config['server']}")
@@ -285,6 +437,9 @@ class OutlookPlaywrightCreator:
             '--disable-features=IsolateOrigins,site-per-process',
             '--ignore-certificate-errors',
             f'--window-size={viewport["width"]},{viewport["height"]}',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
         ]
 
         # Используем Chromium (лучше stealth поддержка)
@@ -294,17 +449,22 @@ class OutlookPlaywrightCreator:
         )
 
         # User-Agent для Chrome
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        user_agent = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{chrome_version} Safari/537.36"
+
+        # Locale и timezone из geo_config
+        locale = self.geo_config['locale'] if self.geo_config else 'en-US'
+        timezone_id = self.geo_config['timezone'] if self.geo_config else 'America/New_York'
 
         # Создаём контекст с настройками
         context_options = {
             "viewport": viewport,
-            "locale": "en-US",
-            "timezone_id": "America/New_York",
+            "locale": locale,
+            "timezone_id": timezone_id,
             "user_agent": user_agent,
             "ignore_https_errors": True,
             "java_script_enabled": True,
             "bypass_csp": True,
+            "color_scheme": random.choice(['light', 'dark']),
         }
 
         if proxy_config:
@@ -312,66 +472,10 @@ class OutlookPlaywrightCreator:
 
         self.context = await self.browser.new_context(**context_options)
 
-        # Добавляем stealth скрипты
-        await self.context.add_init_script("""
-            // Скрываем webdriver
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            
-            // Правильный plugins массив
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => {
-                    const plugins = [
-                        {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
-                        {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
-                        {name: 'Native Client', filename: 'internal-nacl-plugin'}
-                    ];
-                    plugins.length = 3;
-                    return plugins;
-                }
-            });
-            
-            // Языки
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en']
-            });
-            
-            // Platform
-            Object.defineProperty(navigator, 'platform', {
-                get: () => 'Win32'
-            });
-            
-            // Permissions API
-            if (navigator.permissions) {
-                const originalQuery = navigator.permissions.query;
-                navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({ state: Notification.permission }) :
-                        originalQuery(parameters)
-                );
-            }
-            
-            // WebGL vendor/renderer
-            const getParameterProto = WebGLRenderingContext.prototype.getParameter;
-            WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                if (parameter === 37445) return 'Google Inc. (NVIDIA)';
-                if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)';
-                return getParameterProto.call(this, parameter);
-            };
-            
-            // Chrome object
-            window.chrome = {
-                runtime: {},
-                loadTimes: function() {},
-                csi: function() {},
-                app: {}
-            };
-            
-            // Удаляем Playwright/Puppeteer следы
-            delete window.__playwright;
-            delete window.__pw_manual;
-        """)
+        # === ИНЖЕКТ FINGERPRINT SCRIPT (КРИТИЧНО - ДО загрузки страниц!) ===
+        if self.fingerprint_script:
+            await self.context.add_init_script(self.fingerprint_script)
+            print("[FINGERPRINT] ✓ Injected via add_init_script")
 
         self.page = await self.context.new_page()
 
@@ -380,9 +484,94 @@ class OutlookPlaywrightCreator:
             await stealth_async(self.page)
             print("[STEALTH] playwright-stealth применён ✓")
 
+        # === ДОБАВЛЯЕМ COOKIES (после создания страницы) ===
+        if STEALTH_MODULES_AVAILABLE:
+            await self._inject_cookies()
+            await self._inject_storage()
+
         # Проверяем webdriver
         webdriver_check = await self.page.evaluate("() => navigator.webdriver")
         print(f"[STEALTH] navigator.webdriver = {webdriver_check}")
+
+        # Проверяем WebGL
+        webgl_vendor = await self.page.evaluate("() => { try { const gl = document.createElement('canvas').getContext('webgl'); return gl.getParameter(37445); } catch(e) { return 'error'; } }")
+        print(f"[STEALTH] WebGL vendor = {webgl_vendor[:40]}...")
+
+    async def _inject_cookies(self):
+        """Инжектирует реалистичные cookies"""
+        if not STEALTH_MODULES_AVAILABLE:
+            return
+
+        try:
+            cookie_gen = CookieGenerator()
+
+            # Генерируем cookies от популярных сайтов
+            all_cookies = cookie_gen.generate_realistic_cookies(num_sites=5)
+
+            # Добавляем Microsoft-специфичные cookies
+            ms_cookies = cookie_gen._generate_microsoft_cookies()
+            all_cookies.extend(ms_cookies)
+
+            # Фильтруем cookies для outlook.com домена
+            # Playwright требует сначала перейти на домен
+            # Поэтому сохраняем для добавления после первого перехода
+            self.pending_cookies = all_cookies
+
+            print(
+                f"[COOKIES] Prepared {len(all_cookies)} cookies from popular sites")
+        except Exception as e:
+            print(f"[COOKIES] Error: {e}")
+
+    async def _inject_storage(self):
+        """Инжектирует localStorage данные"""
+        if not STEALTH_MODULES_AVAILABLE:
+            return
+
+        try:
+            storage_gen = StorageGenerator()
+            storage_data = storage_gen.generate_full_storage(self.geo_config)
+            storage_script = storage_gen.get_storage_script(storage_data)
+
+            # Сохраняем для выполнения после загрузки страницы
+            self.pending_storage_script = storage_script
+
+            print(f"[STORAGE] Prepared {len(storage_data)} localStorage items")
+        except Exception as e:
+            print(f"[STORAGE] Error: {e}")
+
+    async def _apply_cookies_and_storage(self):
+        """Применяет cookies и localStorage после загрузки страницы"""
+        # Добавляем cookies для текущего домена
+        if hasattr(self, 'pending_cookies') and self.pending_cookies:
+            try:
+                for cookie in self.pending_cookies:
+                    domain = cookie.get('domain', '')
+                    # Пропускаем cookies для других доменов
+                    if 'microsoft' in domain or 'live' in domain or 'outlook' in domain:
+                        try:
+                            # Playwright требует url или domain
+                            cookie_data = {
+                                'name': cookie['name'],
+                                'value': cookie['value'],
+                                'domain': domain,
+                                'path': cookie.get('path', '/'),
+                            }
+                            if 'expires' in cookie:
+                                cookie_data['expires'] = cookie['expires']
+                            await self.context.add_cookies([cookie_data])
+                        except Exception:
+                            pass  # Игнорируем ошибки отдельных cookies
+                print(f"[COOKIES] ✓ Applied Microsoft cookies")
+            except Exception as e:
+                print(f"[COOKIES] Error applying: {e}")
+
+        # Выполняем localStorage скрипт
+        if hasattr(self, 'pending_storage_script') and self.pending_storage_script:
+            try:
+                await self.page.evaluate(self.pending_storage_script)
+                print(f"[STORAGE] ✓ Applied localStorage data")
+            except Exception as e:
+                print(f"[STORAGE] Error applying: {e}")
 
     async def _get_captcha_frame(self) -> Optional[Any]:
         """Находит iframe с капчей и возвращает его frame (включая вложенные)"""
@@ -1017,6 +1206,49 @@ class OutlookPlaywrightCreator:
         except:
             return None
 
+    async def _check_block_error(self) -> Optional[str]:
+        """Проверяет блокировку от Microsoft (unusual activity)"""
+        try:
+            error = await self.page.evaluate("""() => {
+                const body = document.body.innerText.toLowerCase();
+                
+                // Блокировка - "We can't create your account"
+                if (body.includes("can't create your account") || 
+                    body.includes("cannot create your account") ||
+                    body.includes("we can't create")) {
+                    return 'BLOCKED: Account creation blocked';
+                }
+                
+                // Unusual activity
+                if (body.includes('unusual activity') || 
+                    body.includes('suspicious activity')) {
+                    return 'BLOCKED: Unusual activity detected';
+                }
+                
+                // Temporary block
+                if (body.includes('too many requests') ||
+                    body.includes('try again later')) {
+                    return 'RATE_LIMIT: Too many requests';
+                }
+                
+                // Phone required
+                if (body.includes('verify your phone') ||
+                    body.includes('add a phone number')) {
+                    return 'PHONE_REQUIRED: Phone verification needed';
+                }
+                
+                // Generic block
+                if (body.includes('something went wrong') && 
+                    body.includes('trouble')) {
+                    return 'BLOCKED: Generic block';
+                }
+                
+                return null;
+            }""")
+            return error
+        except:
+            return None
+
     async def _hold_captcha_button(self, button, frame=None) -> bool:
         """Нажимает и удерживает кнопку капчи"""
         try:
@@ -1550,6 +1782,10 @@ class OutlookPlaywrightCreator:
                 'input#LastName'
             ]
 
+            # Случайное движение мыши перед вводом (человеческое поведение)
+            await random_mouse_movement(self.page, random.randint(1, 3))
+            await human_delay(300, 700)
+
             # First name
             for sel in first_selectors:
                 try:
@@ -1561,7 +1797,11 @@ class OutlookPlaywrightCreator:
                 except:
                     continue
 
-            await human_delay(200, 400)
+            # Более длинная пауза между полями (как человек)
+            await human_delay(400, 800)
+
+            # Случайное движение мыши
+            await random_mouse_movement(self.page, 1)
 
             # Last name
             for sel in last_selectors:
@@ -1574,7 +1814,8 @@ class OutlookPlaywrightCreator:
                 except:
                     continue
 
-            await human_delay(300, 600)
+            # Пауза перед нажатием Next (человек "проверяет" данные)
+            await human_delay(600, 1200)
 
             # Next
             await human_click(self.page, 'button#iSignupAction, button[type="submit"]')
@@ -1592,6 +1833,10 @@ class OutlookPlaywrightCreator:
         print("=" * 60)
 
         try:
+            # === РОТАЦИЯ IP (если доступна) ===
+            if self.rotate_ip and self.proxy_manager:
+                await self._rotate_ip()
+
             # Настраиваем браузер
             await self._setup_browser()
 
@@ -1614,6 +1859,9 @@ class OutlookPlaywrightCreator:
                 )
             except PlaywrightTimeout:
                 print("[PAGE] Таймаут загрузки, продолжаем...")
+
+            # === ИНЖЕКТИРУЕМ COOKIES И STORAGE ПОСЛЕ ЗАГРУЗКИ ===
+            await self._apply_cookies_and_storage()
 
             # Ждём появления формы
             try:
@@ -1677,6 +1925,20 @@ class OutlookPlaywrightCreator:
                     print("[ERROR] Не удалось ввести имя")
                     return None
                 await human_delay(500, 800)
+
+                # Проверяем блокировку после ввода имени
+                await asyncio.sleep(2)  # Ждём ответ сервера
+                block_error = await self._check_block_error()
+                if block_error:
+                    print(f"\n[BLOCK] ❌ {block_error}")
+                    print("[BLOCK] Microsoft детектировал автоматизацию!")
+                    print("[BLOCK] Рекомендации:")
+                    print("  1. Смените прокси/IP")
+                    print("  2. Подождите 30-60 минут")
+                    print("  3. Очистите cookies браузера")
+                    print("  4. Используйте другой профиль")
+                    return None
+
             elif birth_found:
                 print("[STEP 3] Сразу дата рождения")
             else:
@@ -1706,6 +1968,7 @@ class OutlookPlaywrightCreator:
             # === ШАГ 5: Имя (если не было раньше) ===
             print("\n[STEP 5] Проверяем поля имени...")
 
+            name_filled_step5 = False
             for _ in range(10):
                 name_el = await self.page.query_selector(
                     '[data-testid="firstNameInput"], input[name="FirstName"]'
@@ -1713,12 +1976,27 @@ class OutlookPlaywrightCreator:
                 if name_el and await name_el.is_visible():
                     print("[STEP 5] Заполняем имя...")
                     await self._fill_name(identity)
+                    name_filled_step5 = True
                     break
                 await asyncio.sleep(1)
             else:
                 print("[STEP 5] Поля имени не найдены")
 
             await human_delay(500, 800)
+
+            # Проверяем блокировку после ввода имени (STEP 5)
+            if name_filled_step5:
+                await asyncio.sleep(2)  # Ждём ответ сервера
+                block_error = await self._check_block_error()
+                if block_error:
+                    print(f"\n[BLOCK] ❌ {block_error}")
+                    print("[BLOCK] Microsoft детектировал автоматизацию!")
+                    print("[BLOCK] Рекомендации:")
+                    print("  1. Смените прокси/IP")
+                    print("  2. Подождите 30-60 минут")
+                    print("  3. Очистите cookies браузера")
+                    print("  4. Используйте другой профиль")
+                    return None
 
             # === ШАГ 6: Автоматическое решение капчи ===
             print("\n" + "=" * 60)
@@ -1997,54 +2275,20 @@ class OutlookPlaywrightCreator:
             traceback.print_exc()
             return False
 
-    async def login_to_outlook(self, email: str, password: str) -> bool:
-        """Авторизуется в Outlook"""
-        print(f"\n[LOGIN] Авторизация: {email}")
-
-        try:
-            if not self.page:
-                await self._setup_browser()
-
-            await self.page.goto("https://login.live.com/", wait_until="networkidle")
-            await human_delay(800, 1500)
-
-            # Email
-            await human_type(self.page, 'input[name="loginfmt"], input#i0116', email)
-            await human_click(self.page, '#idSIButton9, input[type="submit"]')
-            await human_delay(1500, 2500)
-
-            # Password
-            await human_type(self.page, 'input[name="passwd"], input#i0118', password)
-            await human_click(self.page, '#idSIButton9, input[type="submit"]')
-            await human_delay(2000, 3000)
-
-            # Stay signed in?
-            try:
-                stay_btn = await self.page.query_selector('#idBtn_Back, #idSIButton9')
-                if stay_btn and await stay_btn.is_visible():
-                    await stay_btn.click()
-                    await human_delay(1500, 2500)
-            except:
-                pass
-
-            print("[LOGIN] ✓ Успешно!")
-            return True
-
-        except Exception as e:
-            print(f"[LOGIN] Ошибка: {e}")
-            return False
-
 
 async def main():
     """Точка входа"""
     headless = "--headless" in sys.argv
     proxy = None
 
+    rotate_ip = "--rotate-ip" in sys.argv  # По умолчанию ВЫКЛЮЧЕНО
+
     for arg in sys.argv:
         if arg.startswith("--proxy="):
             proxy = arg.split("=", 1)[1]
 
-    creator = OutlookPlaywrightCreator(proxy=proxy, headless=headless)
+    creator = OutlookPlaywrightCreator(
+        proxy=proxy, headless=headless, rotate_ip=rotate_ip)
     result = await creator.create_account()
 
     if result:

@@ -337,16 +337,15 @@ class FingerprintGenerator:
                         return originalFillRect.apply(this, [x + shift, y + shift, w, h]);
                     }};
 
-                    // Подменяем getImageData
+                    // Подменяем getImageData (SUBTLE noise, не XOR!)
                     const originalGetImageData = context.getImageData;
                     context.getImageData = function(sx, sy, sw, sh) {{
                         const imageData = originalGetImageData.apply(this, arguments);
-                        for (let i = 0; i < imageData.data.length; i += 4) {{
-                            if (i % 40 === 0) {{
-                                imageData.data[i] = imageData.data[i] ^ canvasNoise;
-                                imageData.data[i + 1] = imageData.data[i + 1] ^ canvasNoise;
-                                imageData.data[i + 2] = imageData.data[i + 2] ^ canvasNoise;
-                            }}
+                        // Добавляем ОЧЕНЬ маленький, естественный шум
+                        // Только к каждому 100-му пикселю, +/- 1
+                        for (let i = 0; i < imageData.data.length; i += 400) {{
+                            const noise = (canvasNoise % 2 === 0) ? 1 : -1;
+                            imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
                         }}
                         return imageData;
                     }};
@@ -355,23 +354,11 @@ class FingerprintGenerator:
                 return context;
             }};
 
-            // Подменяем toDataURL для этого canvas
+            // Подменяем toDataURL для этого canvas (SUBTLE noise!)
             const originalToDataURL = element.toDataURL;
             element.toDataURL = function(type) {{
-                const ctx = this.getContext('2d');
-                if (ctx && this.width > 0 && this.height > 0) {{
-                    try {{
-                        const imageData = ctx.getImageData(0, 0, this.width, this.height);
-                        for (let i = 0; i < imageData.data.length; i += 4) {{
-                            if (i % 40 === 0) {{
-                                imageData.data[i] = imageData.data[i] ^ canvasNoise;
-                                imageData.data[i + 1] = imageData.data[i + 1] ^ canvasNoise;
-                                imageData.data[i + 2] = imageData.data[i + 2] ^ canvasNoise;
-                            }}
-                        }}
-                        ctx.putImageData(imageData, 0, 0);
-                    }} catch(e) {{}}
-                }}
+                // НЕ модифицируем toDataURL - getImageData уже добавил noise
+                // Двойная модификация создает детекцию!
                 return originalToDataURL.apply(this, arguments);
             }};
         }}
@@ -607,6 +594,60 @@ class FingerprintGenerator:
     console.log('[FINGERPRINT] Expected: false (not undefined, not true)');
 
     // ============================================
+    // 6.5. WEBRTC LEAK PROTECTION (КРИТИЧНО!)
+    // ============================================
+    // Блокируем WebRTC чтобы предотвратить утечку реального IP
+    try {{
+        // Переопределяем RTCPeerConnection чтобы использовать только relay (TURN)
+        const originalRTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+
+        if (originalRTCPeerConnection) {{
+            window.RTCPeerConnection = function(config, constraints) {{
+                // Принудительно используем только TURN серверы (relay), блокируя host/srflx
+                if (config && config.iceServers) {{
+                    config.iceServers = config.iceServers.filter(server => {{
+                        return server.urls && server.urls.toString().includes('turn');
+                    }});
+                }}
+
+                // Если нет TURN серверов - блокируем создание вообще
+                if (!config || !config.iceServers || config.iceServers.length === 0) {{
+                    throw new DOMException('WebRTC is disabled', 'NotSupportedError');
+                }}
+
+                return new originalRTCPeerConnection(config, constraints);
+            }};
+
+            // Копируем прототип
+            window.RTCPeerConnection.prototype = originalRTCPeerConnection.prototype;
+
+            // Для старых браузеров
+            if (window.webkitRTCPeerConnection) {{
+                window.webkitRTCPeerConnection = window.RTCPeerConnection;
+            }}
+            if (window.mozRTCPeerConnection) {{
+                window.mozRTCPeerConnection = window.RTCPeerConnection;
+            }}
+
+            console.log('[FINGERPRINT] WebRTC leak protection enabled (relay-only mode)');
+        }}
+
+        // Также блокируем navigator.mediaDevices.getUserMedia для предотвращения доступа к камере/микрофону
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {{
+            const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+
+            navigator.mediaDevices.getUserMedia = function(constraints) {{
+                // Всегда отклоняем запрос
+                return Promise.reject(new DOMException('Permission denied', 'NotAllowedError'));
+            }};
+
+            console.log('[FINGERPRINT] getUserMedia blocked (no camera/mic access)');
+        }}
+    }} catch(e) {{
+        console.log('[FINGERPRINT] Could not setup WebRTC protection:', e);
+    }}
+
+    // ============================================
     // 7. NAVIGATOR PROPERTIES (зависит от браузера!)
     // ============================================
     const fakeUserAgent = `{fake_user_agent}`;
@@ -831,33 +872,139 @@ class FingerprintGenerator:
             script += f"""
     // CHROME-СПЕЦИФИЧНЫЕ СВОЙСТВА
 
-    // Подмена navigator.userAgentData (новый Chrome API)
-    if (navigator.userAgentData) {{
+    // КРИТИЧНО: navigator.userAgentData (User-Agent Client Hints API)
+    // Это ОБЯЗАТЕЛЬНО для Chrome 90+!
+    try {{
+        const majorVersion = '{browser_version.split('.')[0]}';
+        const fullVersion = '{browser_version}';
+
         const brands = [
-            {{ brand: 'Not A(Brand', version: '8' }},
-            {{ brand: 'Chromium', version: '{browser_version.split('.')[0]}' }},
-            {{ brand: 'Google Chrome', version: '{browser_version.split('.')[0]}' }}
+            {{ brand: 'Microsoft Edge', version: majorVersion }},
+            {{ brand: 'Chromium', version: majorVersion }},
+            {{ brand: 'Not:A-Brand', version: '99' }}
+        ];
+
+        const fullVersionList = [
+            {{ brand: 'Microsoft Edge', version: fullVersion }},
+            {{ brand: 'Chromium', version: fullVersion }},
+            {{ brand: 'Not:A-Brand', version: '99.0.0.0' }}
         ];
 
         Object.defineProperty(navigator, 'userAgentData', {{
             get: () => ({{
                 brands: brands,
                 mobile: false,
-                platform: 'Windows'
+                platform: 'Windows',
+                getHighEntropyValues: async (hints) => {{
+                    return {{
+                        architecture: 'x86',
+                        bitness: '64',
+                        brands: brands,
+                        fullVersionList: fullVersionList,
+                        mobile: false,
+                        model: '',
+                        platform: 'Windows',
+                        platformVersion: '10.0.0',
+                        uaFullVersion: fullVersion,
+                        wow64: false
+                    }};
+                }},
+                toJSON: () => ({{
+                    brands: brands,
+                    mobile: false,
+                    platform: 'Windows'
+                }})
             }}),
-            configurable: true
+            configurable: true,
+            enumerable: true
         }});
+        console.log('[FINGERPRINT] navigator.userAgentData added with platform hints');
+    }} catch(e) {{
+        console.log('[FINGERPRINT] Could not add userAgentData:', e);
     }}
 
-    // CHROME OBJECT
-    if (!window.chrome) {{
-        window.chrome = {{
-            runtime: {{}},
-            loadTimes: function() {{}},
-            csi: function() {{}},
-            app: {{}}
-        }};
-        console.log('[FINGERPRINT] Added window.chrome (Chrome mode)');
+    // CHROME OBJECT (расширенная версия с loadTimes и csi)
+    try {{
+        if (!window.chrome) {{
+            window.chrome = {{}};
+        }}
+
+        // chrome.runtime (обязателен!)
+        if (!window.chrome.runtime) {{
+            window.chrome.runtime = {{
+                OnInstalledReason: {{
+                    CHROME_UPDATE: "chrome_update",
+                    INSTALL: "install",
+                    SHARED_MODULE_UPDATE: "shared_module_update",
+                    UPDATE: "update"
+                }},
+                OnRestartRequiredReason: {{
+                    APP_UPDATE: "app_update",
+                    OS_UPDATE: "os_update",
+                    PERIODIC: "periodic"
+                }},
+                PlatformArch: {{
+                    ARM: "arm",
+                    ARM64: "arm64",
+                    MIPS: "mips",
+                    MIPS64: "mips64",
+                    X86_32: "x86-32",
+                    X86_64: "x86-64"
+                }},
+                PlatformOs: {{
+                    ANDROID: "android",
+                    CROS: "cros",
+                    LINUX: "linux",
+                    MAC: "mac",
+                    OPENBSD: "openbsd",
+                    WIN: "win"
+                }},
+                id: undefined  // Не extension
+            }};
+        }}
+
+        // chrome.loadTimes (deprecated но все еще проверяется)
+        if (!window.chrome.loadTimes) {{
+            window.chrome.loadTimes = function() {{
+                const now = Date.now() / 1000;
+                return {{
+                    commitLoadTime: now - Math.random() * 2,
+                    connectionInfo: "h2",
+                    finishDocumentLoadTime: now - Math.random(),
+                    finishLoadTime: now - Math.random() * 0.5,
+                    firstPaintAfterLoadTime: 0,
+                    firstPaintTime: now - Math.random(),
+                    navigationType: "Other",
+                    npnNegotiatedProtocol: "h2",
+                    requestTime: now - Math.random() * 3,
+                    startLoadTime: now - Math.random() * 2.5,
+                    wasAlternateProtocolAvailable: false,
+                    wasFetchedViaSpdy: true,
+                    wasNpnNegotiated: true
+                }};
+            }};
+        }}
+
+        // chrome.csi (Chrome Speed Index)
+        if (!window.chrome.csi) {{
+            window.chrome.csi = function() {{
+                return {{
+                    onloadT: Date.now(),
+                    pageT: Math.random() * 1000 + 500,
+                    startE: Date.now() - Math.random() * 3000,
+                    tran: 15
+                }};
+            }};
+        }}
+
+        // chrome.app (пустой объект)
+        if (!window.chrome.app) {{
+            window.chrome.app = {{}};
+        }}
+
+        console.log('[FINGERPRINT] window.chrome fully configured');
+    }} catch(e) {{
+        console.log('[FINGERPRINT] Could not configure window.chrome:', e);
     }}
     """
 
@@ -914,78 +1061,126 @@ class FingerprintGenerator:
     }
 
     // ============================================
-    // 8. PLUGINS & MIMETYPES (FlowebBrowser style - НЕ пустые!)
+    // 8. PLUGINS & MIMETYPES (ПРАВИЛЬНАЯ РЕАЛИЗАЦИЯ PluginArray!)
     // ============================================
     try {
-        // Создаем реалистичные фейковые plugins (как в обычном Firefox)
-        const fakePlugins = [
-            {
-                name: "PDF Viewer",
-                description: "Portable Document Format",
-                filename: "internal-pdf-viewer",
-                length: 2
-            },
-            {
-                name: "Chrome PDF Viewer",
-                description: "Portable Document Format",
-                filename: "internal-pdf-viewer",
-                length: 2
-            },
-            {
-                name: "Chromium PDF Viewer",
-                description: "Portable Document Format",
-                filename: "internal-pdf-viewer",
-                length: 2
-            },
-            {
-                name: "Microsoft Edge PDF Viewer",
-                description: "Portable Document Format",
-                filename: "internal-pdf-viewer",
-                length: 2
-            },
-            {
-                name: "WebKit built-in PDF",
-                description: "Portable Document Format",
-                filename: "internal-pdf-viewer",
-                length: 2
+        // Создаем MimeType objects
+        class FakeMimeType {
+            constructor(type, description, suffixes, enabledPlugin) {
+                this.type = type;
+                this.description = description;
+                this.suffixes = suffixes;
+                this.enabledPlugin = enabledPlugin;
             }
+        }
+
+        // Создаем Plugin objects
+        class FakePlugin {
+            constructor(name, description, filename, mimeTypes) {
+                this.name = name;
+                this.description = description;
+                this.filename = filename;
+                this.length = mimeTypes.length;
+
+                // Добавляем mimeTypes как индексированные properties
+                mimeTypes.forEach((mt, index) => {
+                    this[index] = mt;
+                    this[mt.type] = mt;
+                });
+            }
+
+            item(index) {
+                return this[index] || null;
+            }
+
+            namedItem(name) {
+                return this[name] || null;
+            }
+        }
+
+        // Создаем НАСТОЯЩИЕ Plugin объекты с MimeTypes
+        const pdfMimeType1 = new FakeMimeType('application/pdf', 'Portable Document Format', 'pdf', null);
+        const pdfMimeType2 = new FakeMimeType('text/pdf', 'Portable Document Format', 'pdf', null);
+
+        const pluginsData = [
+            new FakePlugin('PDF Viewer', 'Portable Document Format', 'internal-pdf-viewer', [pdfMimeType1, pdfMimeType2]),
+            new FakePlugin('Chrome PDF Viewer', 'Portable Document Format', 'internal-pdf-viewer', [pdfMimeType1, pdfMimeType2]),
+            new FakePlugin('Chromium PDF Viewer', 'Portable Document Format', 'internal-pdf-viewer', [pdfMimeType1, pdfMimeType2]),
+            new FakePlugin('Microsoft Edge PDF Viewer', 'Portable Document Format', 'internal-pdf-viewer', [pdfMimeType1, pdfMimeType2]),
+            new FakePlugin('WebKit built-in PDF', 'Portable Document Format', 'internal-pdf-viewer', [pdfMimeType1, pdfMimeType2])
         ];
 
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => fakePlugins,
-            configurable: true
+        // Связываем mimeTypes с их enabledPlugin
+        pluginsData.forEach(plugin => {
+            for (let i = 0; i < plugin.length; i++) {
+                plugin[i].enabledPlugin = plugin;
+            }
         });
+
+        // Создаем PluginArray (наследуется от Array)
+        const pluginArray = Object.create(PluginArray.prototype);
+        pluginArray.length = pluginsData.length;
+
+        pluginsData.forEach((plugin, index) => {
+            pluginArray[index] = plugin;
+            pluginArray[plugin.name] = plugin;
+        });
+
+        // Добавляем методы PluginArray
+        pluginArray.item = function(index) {
+            return this[index] || null;
+        };
+
+        pluginArray.namedItem = function(name) {
+            return this[name] || null;
+        };
+
+        pluginArray.refresh = function() {
+            // Empty refresh function
+        };
+
+        // Переопределяем navigator.plugins
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => pluginArray,
+            configurable: true,
+            enumerable: true
+        });
+
+        console.log('[FINGERPRINT] Plugins injected:', pluginArray.length);
     } catch(e) {
         console.log('[FINGERPRINT] Could not override plugins:', e);
     }
 
     try {
-        // Создаем фейковые mimeTypes
-        const fakeMimeTypes = [
-            {
-                type: "application/pdf",
-                description: "Portable Document Format",
-                suffixes: "pdf",
-                enabledPlugin: {
-                    name: "PDF Viewer",
-                    description: "Portable Document Format"
-                }
-            },
-            {
-                type: "text/pdf",
-                description: "Portable Document Format",
-                suffixes: "pdf",
-                enabledPlugin: {
-                    name: "PDF Viewer",
-                    description: "Portable Document Format"
-                }
-            }
+        // Создаем MimeTypeArray
+        const mimeTypesData = [
+            { type: 'application/pdf', description: 'Portable Document Format', suffixes: 'pdf', enabledPlugin: navigator.plugins[0] },
+            { type: 'text/pdf', description: 'Portable Document Format', suffixes: 'pdf', enabledPlugin: navigator.plugins[0] }
         ];
 
-        Object.defineProperty(navigator, 'mimeTypes', {
-            get: () => fakeMimeTypes,
-            configurable: true
+        const mimeTypeArray = Object.create(MimeTypeArray.prototype);
+        mimeTypeArray.length = mimeTypesData.length;
+
+        mimeTypesData.forEach((mt, index) => {
+            mimeTypeArray[index] = mt;
+            mimeTypeArray[mt.type] = mt;
         });
+
+        mimeTypeArray.item = function(index) {
+            return this[index] || null;
+        };
+
+        mimeTypeArray.namedItem = function(name) {
+            return this[name] || null;
+        };
+
+        Object.defineProperty(navigator, 'mimeTypes', {
+            get: () => mimeTypeArray,
+            configurable: true,
+            enumerable: true
+        });
+
+        console.log('[FINGERPRINT] MimeTypes injected:', mimeTypeArray.length);
     } catch(e) {
         console.log('[FINGERPRINT] Could not override mimeTypes:', e);
     }
