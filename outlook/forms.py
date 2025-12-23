@@ -28,18 +28,19 @@ class FormFiller:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                email_selector = 'input[name="MemberName"], input#MemberName, input[type="email"]'
-                await self.page.wait_for_selector(email_selector, timeout=15000)
+                email_selector = self.page.get_by_role("textbox", name="Електронна пошта")
+                await email_selector.wait_for(state="visible", timeout=20000)
 
                 if attempt > 1:
-                    await self.page.fill(email_selector, '')
+                    print(f"[EMAIL] Повторный ввод")
+                    await email_selector.fill("")
                     await human_delay(200, 400)
 
                 await human_type(self.page, email_selector, identity["email"], typo_rate=0.05)
                 await human_delay(300, 600)
 
-                next_btn = 'button#iSignupAction, button[type="submit"]'
-                await human_click(self.page, next_btn)
+                create_locator = self.page.get_by_role("button", name="Далі")
+                await human_click(self.page, create_locator)
                 await human_delay(1500, 2500)
 
                 try:

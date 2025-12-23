@@ -47,14 +47,33 @@ async def main():
             signin_locator = browser_manager.page.get_by_role("link", name="Вхід")
         if await signin_locator.count() == 0:
             signin_locator = browser_manager.page.locator('a:has-text("Вхід")')
-
         await human_click(browser_manager.page, signin_locator)
+
+        await human_delay(1500, 2500)
+        create_locator = browser_manager.page.get_by_role("button", name="Створити обліковий запис")
+        await human_click(browser_manager.page, create_locator)
 
 
     except KeyboardInterrupt:
-        print(f"[WARMUP] Ошибка прогрева: {e}")
+        print(f"[WARMUP] Ошибка прогрева:")
     finally:
-        await browser_manager.close()
+        # Ждём закрытия браузера пользователем
+        print("\n" + "=" * 60)
+        print("[INFO] Браузер остаётся открытым.")
+        print("[INFO] Закройте окно браузера или нажмите Ctrl+C для выхода.")
+        print("=" * 60)
+
+        try:
+            while True:
+                await asyncio.sleep(1)
+                if not browser_manager.page or browser_manager.page.is_closed():
+                    print("[INFO] Окно браузера закрыто пользователем")
+                    break
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("\n[INFO] Получен сигнал завершения")
+        finally:
+            print("[INFO] Закрытие браузера...")
+            await browser_manager.close()
 
 
 if __name__ == "__main__":

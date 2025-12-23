@@ -20,6 +20,7 @@ from .config import TYPING_DELAY, CLICK_DELAY
 async def human_delay(min_ms: int = 200, max_ms: int = 500):
     """Случайная задержка как у человека"""
     delay = random.uniform(min_ms, max_ms) / 1000
+    print(f"\n[Delay] Задержка {delay}")
     await asyncio.sleep(delay)
 
 
@@ -71,10 +72,10 @@ async def smooth_mouse_move(page: Page, to_x: float, to_y: float,
     await page.evaluate(f"window.__mouseX = {to_x}; window.__mouseY = {to_y};")
 
 
-async def human_type(page: Page, selector: str, text: str, typo_rate: float = 0.05):
+async def human_type(page: Page, selector: Locator, text: str, typo_rate: float = 0.05):
     """Печатает текст человекоподобно с возможными опечатками"""
 
-    element = await page.wait_for_selector(selector, timeout=15000)
+    element = await selector.wait_for(state="visible", timeout=15000)
     if not element:
         raise Exception(f"Элемент не найден: {selector}")
 
@@ -125,7 +126,7 @@ async def human_type(page: Page, selector: str, text: str, typo_rate: float = 0.
     await human_delay(80, 200)
 
 
-async def human_click(page: Page, locator: Locator, timeout: int = 10000):
+async def human_click(page: Page, locator: Locator):
     """
         Максимально человекоподобный клик в Playwright
         Проходит behavioral detection Microsoft, Google, Cloudflare, Steam
@@ -154,11 +155,11 @@ async def human_click(page: Page, locator: Locator, timeout: int = 10000):
     await human_mouse_move(page, target_x, target_y)
 
     # Или с лёгким overshoot (человек часто чуть промахивается):
-    overshoot_x = target_x + random.uniform(-15, 15)
-    overshoot_y = target_y + random.uniform(-15, 15)
-    await human_mouse_move(page, overshoot_x, overshoot_y)
-    await human_delay(50, 150)
-    await human_mouse_move(page, target_x, target_y)
+    # overshoot_x = target_x + random.uniform(-15, 15)
+    # overshoot_y = target_y + random.uniform(-15, 15)
+    # await human_mouse_move(page, overshoot_x, overshoot_y)
+    # await human_delay(50, 150)
+    # await human_mouse_move(page, target_x, target_y)
 
     # 6. Задержка перед кликом
     await human_delay(80, 280)
