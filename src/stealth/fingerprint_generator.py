@@ -1225,12 +1225,106 @@ class FingerprintGenerator:
     }
 
 
-    console.log('[FINGERPRINT] Injected successfully (safe mode)');
+    // ============================================
+    // 10. BATTERY API (реалистичная эмуляция для ноутбуков)
+    // ============================================
+    try {
+        if (!navigator.getBattery) {
+            const batteryData = {
+                charging: true,
+                chargingTime: 0,
+                dischargingTime: Infinity,
+                level: 0.95 + Math.random() * 0.05,
+                onchargingchange: null,
+                onchargingtimechange: null,
+                ondischargingtimechange: null,
+                onlevelchange: null,
+                addEventListener: function() {},
+                removeEventListener: function() {},
+                dispatchEvent: function() { return true; }
+            };
+
+            navigator.getBattery = function() {
+                return Promise.resolve(batteryData);
+            };
+
+            console.log('[FINGERPRINT] Battery API added (level: ' + (batteryData.level * 100).toFixed(1) + '%)');
+        }
+    } catch(e) {}
+
+    // ============================================
+    // 11. NAVIGATOR.LANGUAGES (массив языков)
+    // ============================================
+    try {
+        const primaryLang = navigator.language || 'en-US';
+
+        if (!navigator.languages || navigator.languages.length === 0) {
+            const languagesArray = [primaryLang];
+
+            if (primaryLang.includes('-')) {
+                const baseLang = primaryLang.split('-')[0];
+                if (!languagesArray.includes(baseLang)) {
+                    languagesArray.push(baseLang);
+                }
+            }
+
+            if (!primaryLang.startsWith('en')) {
+                languagesArray.push('en-US', 'en');
+            }
+
+            Object.defineProperty(navigator, 'languages', {
+                get: () => languagesArray,
+                configurable: true,
+                enumerable: true
+            });
+
+            console.log('[FINGERPRINT] navigator.languages:', languagesArray);
+        }
+    } catch(e) {}
+
+    // ============================================
+    // 12. DO NOT TRACK (realistic value)
+    // ============================================
+    try {
+        if (navigator.doNotTrack === "1" || navigator.doNotTrack === "unspecified") {
+            Object.defineProperty(navigator, 'doNotTrack', {
+                get: () => null,
+                configurable: true,
+                enumerable: true
+            });
+        }
+    } catch(e) {}
+
+    // ============================================
+    // 13. PERFORMANCE.MEMORY (Chrome-specific)
+    // ============================================
+    try {
+        if (window.performance && !window.performance.memory && !IS_FIREFOX) {
+            Object.defineProperty(window.performance, 'memory', {
+                get: () => ({
+                    jsHeapSizeLimit: 2197815296,
+                    totalJSHeapSize: Math.floor(Math.random() * 100000000) + 50000000,
+                    usedJSHeapSize: Math.floor(Math.random() * 80000000) + 30000000,
+                }),
+                configurable: true,
+                enumerable: true
+            });
+
+            console.log('[FINGERPRINT] performance.memory added');
+        }
+    } catch(e) {}
+
+    console.log('[FINGERPRINT] ========================================');
+    console.log('[FINGERPRINT] STEALTH INJECTED SUCCESSFULLY');
+    console.log('[FINGERPRINT] ========================================');
     console.log('[FINGERPRINT] WebGL Vendor:', '""" + config['webgl']['vendor'] + """');
     console.log('[FINGERPRINT] WebGL Renderer:', '""" + config['webgl']['renderer'] + """');
     console.log('[FINGERPRINT] Hardware:', """ + str(config['hardware']['cores']) + """ + ' cores, ' + """ + str(config['hardware']['memory']) + """ + ' GB');
     console.log('[FINGERPRINT] Canvas noise:', """ + str(config['canvas_noise']) + """);
     console.log('[FINGERPRINT] Browser type:', BROWSER_TYPE);
+    console.log('[FINGERPRINT] navigator.webdriver:', navigator.webdriver, '(should be false)');
+    console.log('[FINGERPRINT] navigator.languages:', navigator.languages);
+    console.log('[FINGERPRINT] ========================================');
 })();
 """
         return script

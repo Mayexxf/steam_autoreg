@@ -137,77 +137,290 @@ class OutlookCreator:
             print(f"[IDENTITY] Name: {identity['first']} {identity['last']}")
             print(f"[IDENTITY] Birth: {identity['birth_month']}/{identity['birth_day']}/{identity['birth_year']}")
 
-            # # === ПРОГРЕВ БРАУЗЕРА: Посещаем нейтральную страницу ===
-            # print(f"\n[WARMUP] Прогрев браузера - посещаем Bing.com...")
-            # try:
-            #     await self.browser_manager.page.goto(
-            #         "https://www.bing.com",
-            #         wait_until="domcontentloaded",
-            #         timeout=30000
-            #     )
-            #     print("[WARMUP] [+] Bing.com загружен")
-            #
-            #     # Применяем storage на нейтральной странице
-            #     await self.browser_manager.apply_storage()
-            #
-            #     # Естественное поведение: задержка, движения мыши, скроллинг
-            #     await human_delay(1500, 2500)
-            #     await random_mouse_movement(self.browser_manager.page, random.randint(2, 4))
-            #
-            #     # Скроллинг
-            #     await self.browser_manager.page.evaluate("window.scrollBy(0, 300)")
-            #     await human_delay(800, 1200)
-            #     await self.browser_manager.page.evaluate("window.scrollBy(0, -150)")
-            #     await human_delay(500, 800)
-            #
-            #     print("[WARMUP] [+] Прогрев завершен")
-            # except Exception as e:
-            #     print(f"[WARMUP] Ошибка прогрева: {e}")
-
-            # === ПРОГРЕВ БРАУЗЕРА: Посещаем нейтральную страницу ===
-            print(f"\n[WARMUP] Прогрев браузера - посещаем www.microsoft.com...")
+            # === ШАГ 1: Посещаем Microsoft.com ===
+            print(f"\n[NAVIGATION] Шаг 1: Посещаем www.microsoft.com...")
             try:
                 await self.browser_manager.page.goto(
                     "https://www.microsoft.com",
                     wait_until="domcontentloaded",
                     timeout=30000
                 )
-                print("[WARMUP] [+] Bing.com загружен")
+                print("[NAVIGATION] [+] Microsoft.com загружен")
 
-                # Применяем storage на нейтральной странице
+                # Применяем storage
                 await self.browser_manager.apply_storage()
 
-                await human_delay(1500, 2500)
+                # Эмулируем человеческое поведение
+                await human_delay(2000, 3500)
+                await random_mouse_movement(self.browser_manager.page, random.randint(2, 4))
 
-                # Надёжный локатор кнопки входа
-                signin_locator = self.browser_manager.page.locator('#mectrl_main_trigger')  # по ID — самый стабильный
-                # Резервные варианты
-                if await signin_locator.count() == 0:
-                    signin_locator = self.browser_manager.page.get_by_role("link", name="Вхід")
-                if await signin_locator.count() == 0:
+                # Легкий скроллинг
+                await self.browser_manager.page.evaluate("window.scrollBy(0, 200)")
+                await human_delay(800, 1500)
+
+            except Exception as e:
+                print(f"[NAVIGATION] Ошибка загрузки Microsoft.com: {e}")
+                return None
+
+            # === ШАГ 2: Кликаем "Войти" ===
+            print("\n[NAVIGATION] Шаг 2: Нажимаем кнопку 'Войти'...")
+            try:
+                # Ищем кнопку входа (несколько вариантов локаторов)
+                signin_locator = None
+
+                # Попытка 1: По ID
+                if await self.browser_manager.page.locator('#mectrl_main_trigger').count() > 0:
+                    signin_locator = self.browser_manager.page.locator('#mectrl_main_trigger')
+                # Попытка 2: По тексту (разные языки)
+                elif await self.browser_manager.page.locator('a:has-text("Sign in")').count() > 0:
+                    signin_locator = self.browser_manager.page.locator('a:has-text("Sign in")')
+                elif await self.browser_manager.page.locator('a:has-text("Войти")').count() > 0:
+                    signin_locator = self.browser_manager.page.locator('a:has-text("Войти")')
+                elif await self.browser_manager.page.locator('a:has-text("Вхід")').count() > 0:
                     signin_locator = self.browser_manager.page.locator('a:has-text("Вхід")')
 
-                await human_click(self.browser_manager.page, signin_locator)
+                if signin_locator:
+                    # Движение мыши к кнопке перед кликом
+                    await random_mouse_movement(self.browser_manager.page, 1)
+                    await human_delay(500, 1000)
 
-                print("[WARMUP] [+] Прогрев завершен")
+                    # Кликаем
+                    await human_click(self.browser_manager.page, signin_locator)
+                    print("[NAVIGATION] [+] Кнопка 'Войти' нажата")
+
+                    # Ждем загрузки формы входа
+                    await human_delay(2500, 4000)
+                else:
+                    print("[NAVIGATION] [!] Кнопка 'Войти' не найдена")
+                    return None
+
             except Exception as e:
-                print(f"[WARMUP] Ошибка прогрева: {e}")
+                print(f"[NAVIGATION] Ошибка при клике на 'Войти': {e}")
+                return None
 
-            await human_delay(25500, 35500)
-
-            # Теперь переходим на страницу регистрации
-            print(f"\n[PAGE] Загрузка signup.live.com...")
+            # === ШАГ 3: Кликаем "Создать учетную запись" ===
+            print("\n[NAVIGATION] Шаг 3: Нажимаем 'Создать учетную запись'...")
             try:
-                await self.browser_manager.page.goto(
-                    SIGNUP_URL,
-                    wait_until="domcontentloaded",
-                    timeout=60000
-                )
-            except PlaywrightTimeout:
-                print("[PAGE] Таймаут загрузки, продолжаем...")
+                # Ждем появления формы входа
+                await self.browser_manager.page.wait_for_load_state("domcontentloaded", timeout=15000)
 
-            # СРАЗУ проверяем что загрузилось
-            print(f"[PAGE] URL после загрузки: {self.browser_manager.page.url}")
+                # Эмулируем чтение страницы и изучение контента
+                await human_delay(1500, 2500)
+                await random_mouse_movement(self.browser_manager.page, random.randint(1, 3))
+
+                # Легкий скроллинг (как будто пользователь смотрит на страницу)
+                await self.browser_manager.page.evaluate("window.scrollBy(0, 100)")
+                await human_delay(500, 1000)
+                await self.browser_manager.page.evaluate("window.scrollBy(0, -50)")
+                await human_delay(300, 700)
+
+                # Ищем ссылку/кнопку "Create account" / "Створити обліковий запис"
+                create_account_locator = None
+
+                # Различные варианты локаторов (Fluent UI и стандартные)
+                possible_selectors = [
+                    # Родительские ссылки <a>, содержащие span с текстом (ПРИОРИТЕТ!)
+                    'a:has(span:has-text("Створити обліковий запис"))',
+                    'a:has(span:has-text("Create account"))',
+                    'a:has(span:has-text("Создать"))',
+                    'a:has(span.fui-Link:has-text("Створити"))',
+
+                    # Fluent UI span/button с точным текстом на разных языках
+                    'span.fui-Link:has-text("Створити обліковий запис")',
+                    'span[role="button"]:has-text("Створити")',
+                    'span.fui-Link:has-text("Create account")',
+                    'span[role="button"]:has-text("Create")',
+                    'span.fui-Link:has-text("Создать")',
+                    'span[role="button"]:has-text("Создать")',
+
+                    # Стандартные ссылки
+                    'a:has-text("Create one")',
+                    'a:has-text("Create account")',
+                    'a:has-text("Sign up now")',
+                    'a:has-text("Створити")',
+                    'a:has-text("Создать")',
+                    'a[href*="signup"]',
+                    '#signup-link',
+                ]
+
+                for selector in possible_selectors:
+                    try:
+                        if await self.browser_manager.page.locator(selector).count() > 0:
+                            create_account_locator = self.browser_manager.page.locator(selector).first
+                            print(f"[NAVIGATION] Найден элемент с селектором: {selector}")
+                            break
+                    except Exception as e:
+                        continue
+
+                # Если не нашли точным селектором, пробуем универсальный поиск по role="button"
+                if not create_account_locator:
+                    print("[NAVIGATION] Пробуем универсальный поиск по role='button'...")
+                    try:
+                        all_buttons = await self.browser_manager.page.locator('span[role="button"], a[role="button"]').all()
+                        for button in all_buttons:
+                            text = await button.inner_text()
+                            if any(keyword in text.lower() for keyword in ['створити', 'create', 'создать', 'sign up', 'signup']):
+                                create_account_locator = button
+                                print(f"[NAVIGATION] Найдена кнопка с текстом: {text}")
+                                break
+                    except Exception as e:
+                        print(f"[NAVIGATION] Ошибка универсального поиска: {e}")
+
+                if create_account_locator:
+                    # Диагностика элемента
+                    try:
+                        is_visible = await create_account_locator.is_visible()
+                        is_enabled = await create_account_locator.is_enabled()
+                        text = await create_account_locator.inner_text()
+                        tag_name = await create_account_locator.evaluate('el => el.tagName')
+                        outer_html = await create_account_locator.evaluate('el => el.outerHTML')
+
+                        print(f"[NAVIGATION] Элемент: visible={is_visible}, enabled={is_enabled}, text='{text}'")
+                        print(f"[NAVIGATION] Tag: {tag_name}")
+                        print(f"[NAVIGATION] HTML (первые 200 символов): {outer_html[:200]}")
+                    except Exception as e:
+                        print(f"[NAVIGATION] Ошибка диагностики элемента: {e}")
+
+                    # Сохраняем URL до клика для проверки
+                    url_before = self.browser_manager.page.url
+
+                    # Движение мыши перед кликом
+                    await random_mouse_movement(self.browser_manager.page, 1)
+                    await human_delay(700, 1500)
+
+                    # Пробуем несколько методов клика
+                    clicked = False
+
+                    # Метод 1: human_click (плавный с мышью)
+                    try:
+                        print("[NAVIGATION] Попытка 1: human_click...")
+                        await human_click(self.browser_manager.page, create_account_locator)
+                        await human_delay(1000, 1500)
+
+                        # Проверяем, изменился ли URL
+                        if self.browser_manager.page.url != url_before:
+                            print("[NAVIGATION] [+] Клик сработал (URL изменился)")
+                            clicked = True
+                    except Exception as e:
+                        print(f"[NAVIGATION] human_click не сработал: {e}")
+                        # Проверяем URL даже при ошибке (навигация могла начаться)
+                        await human_delay(1000, 1500)
+                        if self.browser_manager.page.url != url_before:
+                            print("[NAVIGATION] [+] human_click сработал (URL изменился несмотря на ошибку)")
+                            clicked = True
+
+                    # Метод 2: Обычный клик Playwright с no_wait_after (если первый не сработал)
+                    if not clicked:
+                        try:
+                            print("[NAVIGATION] Попытка 2: Playwright click() с no_wait_after...")
+                            await create_account_locator.click(timeout=10000, no_wait_after=True)
+                            await human_delay(2000, 3000)
+
+                            if self.browser_manager.page.url != url_before:
+                                print("[NAVIGATION] [+] Playwright click сработал")
+                                clicked = True
+                        except Exception as e:
+                            print(f"[NAVIGATION] Playwright click не сработал: {e}")
+                            # Проверяем URL даже при ошибке
+                            await human_delay(1000, 1500)
+                            if self.browser_manager.page.url != url_before:
+                                print("[NAVIGATION] [+] Playwright click сработал (URL изменился несмотря на ошибку)")
+                                clicked = True
+
+                    # Метод 3: JavaScript клик (для упрямых React/Fluent UI элементов)
+                    if not clicked:
+                        try:
+                            print("[NAVIGATION] Попытка 3: JavaScript click()...")
+                            await create_account_locator.evaluate('el => el.click()')
+                            await human_delay(2000, 3000)
+
+                            if self.browser_manager.page.url != url_before:
+                                print("[NAVIGATION] [+] JavaScript click сработал")
+                                clicked = True
+                        except Exception as e:
+                            print(f"[NAVIGATION] JavaScript click не сработал: {e}")
+                            # Проверяем URL даже при ошибке
+                            await human_delay(1000, 1500)
+                            if self.browser_manager.page.url != url_before:
+                                print("[NAVIGATION] [+] JavaScript click сработал (URL изменился несмотря на ошибку)")
+                                clicked = True
+
+                    # Метод 4: Клик на родительский элемент (иногда span внутри ссылки)
+                    if not clicked:
+                        try:
+                            print("[NAVIGATION] Попытка 4: Клик на родительский элемент...")
+                            parent = await create_account_locator.evaluate('el => el.parentElement')
+                            if parent:
+                                await create_account_locator.evaluate('el => el.parentElement.click()')
+                                await human_delay(2000, 3000)
+
+                                if self.browser_manager.page.url != url_before:
+                                    print("[NAVIGATION] [+] Клик на родителя сработал")
+                                    clicked = True
+                        except Exception as e:
+                            print(f"[NAVIGATION] Клик на родителя не сработал: {e}")
+                            # Проверяем URL даже при ошибке
+                            await human_delay(1000, 1500)
+                            if self.browser_manager.page.url != url_before:
+                                print("[NAVIGATION] [+] Клик на родителя сработал (URL изменился несмотря на ошибку)")
+                                clicked = True
+
+                    if not clicked:
+                        print("[NAVIGATION] [!] Ни один метод клика не сработал!")
+                        print(f"[NAVIGATION] URL до: {url_before}")
+                        print(f"[NAVIGATION] URL после: {self.browser_manager.page.url}")
+
+                        # Сохраняем скриншот для отладки
+                        try:
+                            await self.browser_manager.page.screenshot(path="C:\\projects\\outlook_click_failed.png")
+                            print("[NAVIGATION] Скриншот сохранен: outlook_click_failed.png")
+                        except:
+                            pass
+
+                        return None
+
+                    # Эмулируем ожидание загрузки (человек двигает мышью во время ожидания)
+                    await human_delay(1500, 2500)
+                    await random_mouse_movement(self.browser_manager.page, random.randint(1, 2))
+                    await human_delay(1500, 2500)
+                else:
+                    print("[NAVIGATION] [!] Кнопка 'Создать учетную запись' не найдена")
+                    print(f"[NAVIGATION] Текущий URL: {self.browser_manager.page.url}")
+
+                    # Дополнительная диагностика
+                    try:
+                        # Показываем все кнопки на странице
+                        all_buttons = await self.browser_manager.page.locator('span[role="button"], a, button').all()
+                        print(f"[NAVIGATION] Найдено элементов с role='button'/a/button: {len(all_buttons)}")
+
+                        # Показываем первые 10 кнопок для отладки
+                        for i, btn in enumerate(all_buttons[:10]):
+                            try:
+                                text = await btn.inner_text()
+                                if text.strip():
+                                    print(f"[NAVIGATION] Кнопка {i+1}: '{text.strip()[:50]}'")
+                            except:
+                                pass
+
+                        # Сохраняем скриншот
+                        await self.browser_manager.page.screenshot(path="C:\\projects\\outlook_create_button_not_found.png")
+                        print("[NAVIGATION] Скриншот сохранен: outlook_create_button_not_found.png")
+                    except Exception as e:
+                        print(f"[NAVIGATION] Ошибка диагностики: {e}")
+
+                    return None
+
+            except Exception as e:
+                print(f"[NAVIGATION] Ошибка при клике 'Создать учетную запись': {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+
+            # === ШАГ 4: Проверяем что загрузилась форма регистрации ===
+
+            # Эмулируем чтение страницы
+            await human_delay(1000, 2000)
+            await random_mouse_movement(self.browser_manager.page, random.randint(1, 2))
 
             try:
                 page_title = await self.browser_manager.page.title()
@@ -232,14 +445,40 @@ class OutlookCreator:
             except Exception as e:
                 print(f"[PAGE] Ошибка проверки страницы: {e}")
 
-            # Ждём форму
+            # === ШАГ 5: Ждём появления формы регистрации ===
+            print("\n[PAGE] Ожидание загрузки формы регистрации...")
             try:
-                await self.browser_manager.page.wait_for_selector(
-                    'input[name="MemberName"], input[type="email"]',
-                    timeout=130000
-                )
+                # Ждем появления поля email (Fluent UI + стандартные селекторы)
+                email_form_selectors = [
+                    'input.fui-Input__input[type="email"]',  # Fluent UI
+                    'input[aria-label*="пошта" i]',  # украинский
+                    'input[aria-label*="email" i]',  # английский
+                    'input[name="Електронна пошта"]',  # украинский
+                    'input[name="MemberName"]',  # стандартный
+                    'input[type="email"]',  # универсальный
+                ]
+
+                # Пробуем найти хотя бы один из селекторов
+                form_found = False
+                for selector in email_form_selectors:
+                    try:
+                        await self.browser_manager.page.wait_for_selector(selector, timeout=5000)
+                        print(f"[PAGE] [+] Форма регистрации найдена: {selector}")
+                        form_found = True
+                        break
+                    except:
+                        continue
+
+                if not form_found:
+                    raise Exception("Форма регистрации не найдена ни одним селектором")
+
+                print("[PAGE] [+] Форма регистрации загружена")
+
+                # Дополнительная задержка для полной загрузки всех элементов
+                await human_delay(1500, 2500)
+
             except PlaywrightTimeout:
-                print("[PAGE] [!] Форма не загрузилась - проверяем что показывается")
+                print("[PAGE] [!] Форма регистрации не загрузилась - проверяем что показывается")
                 print(f"[PAGE] Текущий URL: {self.browser_manager.page.url}")
 
                 # Проверяем заголовок страницы
@@ -260,12 +499,22 @@ class OutlookCreator:
                         print(f"[PAGE] Текст: {body_text[:500]}")
                     else:
                         print(f"[PAGE] Текст страницы (первые 300 символов): {body_text[:300]}")
+
+                    # Сохраняем скриншот для отладки
+                    try:
+                        await self.browser_manager.page.screenshot(path="C:\\projects\\outlook_form_not_found.png")
+                        print("[PAGE] Скриншот сохранен: outlook_form_not_found.png")
+                    except:
+                        pass
+
                 except Exception as e:
                     print(f"[PAGE] Ошибка получения текста: {e}")
 
                 return None
 
             print(f"[PAGE] URL: {self.browser_manager.page.url}")
+
+            # Финальная эмуляция человеческого поведения перед заполнением
             await human_delay(PAGE_DELAY[0], PAGE_DELAY[1])
             await random_mouse_movement(self.browser_manager.page, random.randint(1, 4))
 
@@ -311,9 +560,24 @@ class OutlookCreator:
             await human_delay(500, 800)
 
             # === ШАГ 6: Капча ===
-            print("\n[STEP 6] ПРОВЕРКА КАПЧИ")
-            await asyncio.sleep(2)
-            await self.captcha_solver.check_and_solve()
+            # print("\n[STEP 6] ПРОВЕРКА КАПЧИ")
+            # await asyncio.sleep(2)
+            # await self.captcha_solver.check_and_solve()
+
+            try:
+                await self.browser_manager.page.wait_for_selector('#px-captcha', state='hidden', timeout=300000)  # 5 минут
+                # Или если элемент просто становится маленьким/скрытым:
+                await self.browser_manager.page.wait_for_function("""() => {
+                    const el = document.querySelector('#px-captcha');
+                    return !el || el.offsetHeight < 20 || el.style.display === 'none';
+                }""", timeout=300000)
+                print("   CAPTCHA пройдена (элемент исчез) — продолжаем!\n")
+            except Exception as e:
+                print("   Таймаут ожидания CAPTCHA. Возможно, не пройдена.")
+                # Можно добавить raise или продолжить с риском
+                raise
+
+            await asyncio.sleep(1)  # небольшая пауза для стабильности
 
             # === ШАГ 7: Пост-регистрация ===
             print("\n[STEP 7] Обработка пост-регистрационных окон...")
@@ -351,7 +615,7 @@ class OutlookCreator:
                 print("\n[INFO] Получен сигнал завершения")
             finally:
                 print("[INFO] Закрытие браузера...")
-                await self.browser_manager.close()
+                # await self.browser_manager.close()
 
     async def _handle_next_step(self, identity: Dict):
         """Определяет следующий шаг после пароля"""

@@ -3,7 +3,7 @@
 """
 Решение капчи PerimeterX (Press & Hold) для Microsoft
 """
-
+import math
 import random
 import asyncio
 import time
@@ -18,7 +18,7 @@ from .config import CAPTCHA_MAX_ATTEMPTS
 try:
     import pyautogui
     pyautogui.FAILSAFE = False
-    PYAUTOGUI_AVAILABLE = True
+    PYAUTOGUI_AVAILABLE = False
 except ImportError:
     PYAUTOGUI_AVAILABLE = False
 
@@ -301,20 +301,38 @@ class CaptchaSolver:
         """Удержание через Playwright"""
         try:
             await smooth_mouse_move(self.page, x, y)
-            await human_delay(100, 200)
+            await human_delay(150, 350)  # чуть дольше пауза — естественнее
             await self.page.mouse.down()
 
-            max_hold_time = 15000
+            hold_duration = random.uniform(9.5, 14.0)  # вариативность
             start_time = time.time()
+            last_correction = 0
 
-            while (time.time() - start_time) * 1000 < max_hold_time:
-                await asyncio.sleep(0.05)
-                dx = random.uniform(-1.5, 1.5)
-                dy = random.uniform(-1.5, 1.5)
+            while (time.time() - start_time) < hold_duration:
+                elapsed = time.time() - start_time
+
+                # Основное дрожание — гауссово распределение (естественнее uniform)
+                dx = random.gauss(0, 4.0)  # среднее отклонение ~4 px
+                dy = random.gauss(0, 4.0)
+
+                # Каждые 2–5 секунд — лёгкое круговое движение (человек поправляет кисть)
+                if elapsed - last_correction > random.uniform(2.0, 5.0):
+                    angle = elapsed * 1.5
+                    radius = random.uniform(6, 14)
+                    dx += math.cos(angle) * radius
+                    dy += math.sin(angle) * radius
+                    last_correction = elapsed
+
+                # Редкий "сбой" — человек чуть отвлёкся
+                if random.random() < 0.008:
+                    dx += random.uniform(-18, 18)
+                    dy += random.uniform(-12, 12)
+
                 await self.page.mouse.move(x + dx, y + dy)
+                await asyncio.sleep(random.uniform(0.04, 0.20))  # нерегулярный ритм
 
             await self.page.mouse.up()
-            await asyncio.sleep(2)
+            await human_delay(600, 1200)
             return await self._check_success()
 
         except Exception as e:

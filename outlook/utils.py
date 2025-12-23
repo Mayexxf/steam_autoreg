@@ -78,7 +78,9 @@ async def human_type(page: Page, selector: str, text: str, typo_rate: float = 0.
     if not element:
         raise Exception(f"Элемент не найден: {selector}")
 
-    await human_click(page, selector)
+    # Создаем локатор из селектора для human_click
+    locator = page.locator(selector)
+    await human_click(page, locator)
     await human_delay(150, 350)
 
     for i, char in enumerate(text):
