@@ -680,7 +680,7 @@ class SteamTestStealth:
                     pass  # Тихо, если не загрузилось
 
             # === Открытие страницы ===
-            self.driver.get("https://store.steampowered.com/join/")
+            self.driver.get("https://login.live.com/")
             time.sleep(self.wait_after_load)
 
             # === Инжект fingerprint + timezone ===
@@ -728,58 +728,58 @@ class SteamTestStealth:
             print(f"[TEST] Stealth ready — check console: navigator.webdriver")
             print(f"{'=' * 60}\n")
 
-            # === Опциональное заполнение формы ===
-            if self.fill_form:
-                from selenium.webdriver.support.ui import WebDriverWait
-                from selenium.webdriver.support import expected_conditions as EC
-                from selenium.webdriver.common.by import By
-                from src.captcha.hcaptcha_stealth import stealth_hcaptcha_checkbox_click
-
-                wait = WebDriverWait(self.driver, 15)
-                actions = ActionChains(self.driver)
-
-                credentials = self.generate_credentials()
-
-                # Скролл + имитация просмотра
-                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight * 0.6);")
-                human_delay(1000, 2000)
-                self.driver.execute_script("window.scrollTo(0, 0);")
-                random_mouse_movement(self.driver, movements=2)
-
-                # Заполнение email
-                for selector, value in [
-                    ('#email, input[name="email"]', credentials['email']),
-                    ('#reenter_email, input[name="reenter_email"]', credentials['email'])
-                ]:
-                    el = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-                    human_delay(300, 600)
-                    actions.move_to_element_with_offset(el, random.randint(-5, 5), random.randint(-5, 5)).click().perform()
-                    human_type(self.driver, selector, value)
-                    human_delay(500, 1000)
-
-                # Чекбокс согласия (если есть)
-                try:
-                    agree = self.driver.find_element(By.CSS_SELECTOR, '#i_agree_check, [name="i_agree_check"]')
-                    actions.move_to_element(agree).click().perform()
-                except:
-                    pass
-
-                # hCaptcha чекбокс
-                human_delay(1500, 3000)
-                random_mouse_movement(self.driver, movements=2)
-                if not stealth_hcaptcha_checkbox_click(self.driver, timeout_attempts=4):
-                    print("[CAPTCHA] Не удалось кликнуть по hCaptcha")
-                    self.driver.save_screenshot("captcha_failed.png")
-
-                # Submit
-                try:
-                    btn = wait.until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, '#createAccountButton, .btnv6_blue_hoverfade')))
-                    actions.move_to_element(btn).pause(random.uniform(0.4, 1.0)).click().perform()
-                    print("[FORM] Form submitted")
-                except:
-                    print("[FORM] Submit button not found/clickable")
+            # # === Опциональное заполнение формы ===
+            # if self.fill_form:
+            #     from selenium.webdriver.support.ui import WebDriverWait
+            #     from selenium.webdriver.support import expected_conditions as EC
+            #     from selenium.webdriver.common.by import By
+            #     from src.captcha.hcaptcha_stealth import stealth_hcaptcha_checkbox_click
+            #
+            #     wait = WebDriverWait(self.driver, 15)
+            #     actions = ActionChains(self.driver)
+            #
+            #     credentials = self.generate_credentials()
+            #
+            #     # Скролл + имитация просмотра
+            #     self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight * 0.6);")
+            #     human_delay(1000, 2000)
+            #     self.driver.execute_script("window.scrollTo(0, 0);")
+            #     random_mouse_movement(self.driver, movements=2)
+            #
+            #     # Заполнение email
+            #     for selector, value in [
+            #         ('#email, input[name="email"]', credentials['email']),
+            #         ('#reenter_email, input[name="reenter_email"]', credentials['email'])
+            #     ]:
+            #         el = self.driver.find_element(By.CSS_SELECTOR, selector)
+            #         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+            #         human_delay(300, 600)
+            #         actions.move_to_element_with_offset(el, random.randint(-5, 5), random.randint(-5, 5)).click().perform()
+            #         human_type(self.driver, selector, value)
+            #         human_delay(500, 1000)
+            #
+            #     # Чекбокс согласия (если есть)
+            #     try:
+            #         agree = self.driver.find_element(By.CSS_SELECTOR, '#i_agree_check, [name="i_agree_check"]')
+            #         actions.move_to_element(agree).click().perform()
+            #     except:
+            #         pass
+            #
+            #     # hCaptcha чекбокс
+            #     human_delay(1500, 3000)
+            #     random_mouse_movement(self.driver, movements=2)
+            #     if not stealth_hcaptcha_checkbox_click(self.driver, timeout_attempts=4):
+            #         print("[CAPTCHA] Не удалось кликнуть по hCaptcha")
+            #         self.driver.save_screenshot("captcha_failed.png")
+            #
+            #     # Submit
+            #     try:
+            #         btn = wait.until(
+            #             EC.element_to_be_clickable((By.CSS_SELECTOR, '#createAccountButton, .btnv6_blue_hoverfade')))
+            #         actions.move_to_element(btn).pause(random.uniform(0.4, 1.0)).click().perform()
+            #         print("[FORM] Form submitted")
+            #     except:
+            #         print("[FORM] Submit button not found/clickable")
 
             # === Бесконечное ожидание (тестовый режим) ===
             print("[WAIT] Браузер открыт — закрывай вручную")
