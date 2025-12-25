@@ -7,12 +7,12 @@
 # ============================================================================
 # ПРОКСИ
 # ============================================================================
-HARDCODED_PROXY = "MPzEefwWaIUi:tc6aWZqR@pool.proxy.market:10000"
+HARDCODED_PROXY = "DEJ2ge:EP5YzGUVRujv:nproxy.site:16791"
 
 # ============================================================================
 # ЗАДЕРЖКИ (в миллисекундах)
 # ============================================================================
-TYPING_DELAY = (80, 250)       # Между символами (было: 40-120)
+TYPING_DELAY = (150, 350)       # Между символами (было: 40-120)
 CLICK_DELAY = (200, 500)       # После клика (было: 80-200)
 ACTION_DELAY = (400, 900)      # Между действиями (было: 200-500)
 PAGE_DELAY = (2000, 3500)      # Загрузка страницы (было: 800-1500)
@@ -44,18 +44,38 @@ OUTLOOK_URL = "https://outlook.live.com/mail/"
 # ИМЕНА ДЛЯ ГЕНЕРАЦИИ
 # ============================================================================
 FIRST_NAMES = [
-    "Liam", "Noah", "Oliver", "Ethan", "Mason", "Logan", "Lucas", "Henry", "James", "Benjamin",
-    "Emma", "Olivia", "Ava", "Sophia", "Isabella", "Mia", "Charlotte", "Amelia", "Harper", "Evelyn"
+    "Oleksandr", "Dmytro", "Maksym", "Artem", "Vladyslav", "Mykyta", "Matviy", "Ivan", "Danylo", "Andriy",
+    "Bohdan", "Kyrylo", "Mykhailo", "Roman", "Denys", "Marko", "Volodymyr", "Yaroslav", "Illia", "Oleksiy",
+    "David", "Tymofiy", "Pavlo", "Yurii", "Vitaliy", "Mykola", "Bohdan", "Nazariy", "Arsen", "Maksim",
+    "Yehor", "Serhiy", "Fedir", "Petro", "Taras", "Vasyl", "Anton", "Myroslav", "Danyil", "Stanislav",
+    "Anastasiya", "Sofiya", "Anna", "Viktoriya", "Mariya", "Veronika", "Solomiya", "Zlata", "Yana", "Daryna",
+    "Kateryna", "Olena", "Nataliya", "Yuliya", "Polina", "Alina", "Diana", "Yeva", "Marta", "Valeriya",
+    "Oleksandra", "Milana", "Elizaveta", "Svitlana", "Arina", "Kamila", "Varvara", "Kristina", "Emiliya", "Vasilina",
+    "Angelina", "Olha", "Nadiya", "Vira", "Liubov", "Tetyana", "Irina", "Khrystyna", "Lesya", "Zoryana",
+    "Kalyna", "Roksolana", "Marharyta", "Sofia", "Anhelina", "Violeta", "Mira", "Liliya", "Eva", "Solomiya"
 ]
 
 LAST_NAMES = [
-    "Smith", "Johnson", "Brown", "Davis", "Miller", "Wilson", "Moore", "Taylor", "Anderson", "Thomas",
-    "Jackson", "White", "Harris", "Martin", "Thompson", "Garcia", "Martinez", "Robinson", "Clark", "Lewis"
+    "Melnyk", "Shevchenko", "Bondarenko", "Kovalenko", "Boyko", "Tkachenko", "Kravchenko", "Kovalchuk", "Oliynyk", "Shevchuk",
+    "Koval", "Rudenko", "Savchenko", "Petrenko", "Moroz", "Lysenko", "Pavlenko", "Romanenko", "Ivanenko", "Kuzmenko",
+    "Symonenko", "Marchenko", "Vasylenko", "Zakharchenko", "Hryhorenko", "Litvinenko", "Kostenko", "Ponomarenko", "Sirenko", "Boiko",
+    "Kucher", "Tkachuk", "Dmytrenko", "Sydorenko", "Havrylenko", "Kovalyov", "Bilous", "Shvets", "Kramarenko", "Martynenko",
+    "Goncharenko", "Yurchenko", "Bilyk", "Zinchenko", "Polishchuk", "Chernenko", "Kushnir", "Pavliuk", "Hrytsenko", "Didenko"
 ]
 
 MONTH_NAMES = [
-    "", "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "січень",    # 1
+    "лютий",
+    "березень",
+    "квітень",
+    "травень",
+    "червень",
+    "липень",
+    "серпень",
+    "вересень",
+    "жовтень",
+    "листопад",
+    "грудень"    # 12
 ]
 
 

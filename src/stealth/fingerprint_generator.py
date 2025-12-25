@@ -30,25 +30,25 @@ class FingerprintGenerator:
     ]
 
     # WebGL конфигурации для FIREFOX (нативные драйверы без ANGLE)
-    WEBGL_CONFIGS_FIREFOX = [
-        # NVIDIA (популярные в 2024-2025) - Firefox использует нативные драйверы
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 4060/PCIe/SSE2'},
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 3060/PCIe/SSE2'},
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 3070/PCIe/SSE2'},
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 4070/PCIe/SSE2'},
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 2060/PCIe/SSE2'},
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce GTX 1660 Ti/PCIe/SSE2'},
-        {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 3060 Ti/PCIe/SSE2'},
-        # AMD (актуальные) - Firefox формат
-        {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 7600'},
-        {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 6700 XT'},
-        {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 6600 XT'},
-        {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 6600'},
-        # Intel (актуальные) - Firefox формат
-        {'vendor': 'Intel', 'renderer': 'Intel(R) Arc(TM) A750 Graphics'},
-        {'vendor': 'Intel', 'renderer': 'Intel(R) Iris(R) Xe Graphics'},
-        {'vendor': 'Intel', 'renderer': 'Intel(R) UHD Graphics 770'},
-    ]
+    # WEBGL_CONFIGS_FIREFOX = [
+    #     # NVIDIA (популярные в 2024-2025) - Firefox использует нативные драйверы
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 4060/PCIe/SSE2'},
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 3060/PCIe/SSE2'},
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 3070/PCIe/SSE2'},
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 4070/PCIe/SSE2'},
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 2060/PCIe/SSE2'},
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce GTX 1660 Ti/PCIe/SSE2'},
+    #     {'vendor': 'NVIDIA Corporation', 'renderer': 'NVIDIA GeForce RTX 3060 Ti/PCIe/SSE2'},
+    #     # AMD (актуальные) - Firefox формат
+    #     {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 7600'},
+    #     {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 6700 XT'},
+    #     {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 6600 XT'},
+    #     {'vendor': 'ATI Technologies Inc.', 'renderer': 'AMD Radeon RX 6600'},
+    #     # Intel (актуальные) - Firefox формат
+    #     {'vendor': 'Intel', 'renderer': 'Intel(R) Arc(TM) A750 Graphics'},
+    #     {'vendor': 'Intel', 'renderer': 'Intel(R) Iris(R) Xe Graphics'},
+    #     {'vendor': 'Intel', 'renderer': 'Intel(R) UHD Graphics 770'},
+    # ]
 
     # Hardware конфигурации (актуальные для 2024-2025)
     HARDWARE_CONFIGS = [
@@ -93,10 +93,7 @@ class FingerprintGenerator:
             dict: Конфигурация для инжектора
         """
         # Выбираем правильные WebGL configs в зависимости от браузера
-        if browser_type.lower() == 'firefox':
-            webgl = random.choice(FingerprintGenerator.WEBGL_CONFIGS_FIREFOX)
-        else:
-            webgl = random.choice(FingerprintGenerator.WEBGL_CONFIGS_CHROME)
+        webgl = random.choice(FingerprintGenerator.WEBGL_CONFIGS_CHROME)
 
         hardware = random.choice(FingerprintGenerator.HARDWARE_CONFIGS)
         viewport = random.choice(FingerprintGenerator.VIEWPORTS)

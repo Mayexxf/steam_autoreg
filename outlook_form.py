@@ -14,7 +14,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 
 from src.utils.mouse_emulator import HumanMouseEmulator  # если используете
-from outlook.utils import human_type, human_click, human_delay, random_mouse_movement
+from outlook.utils import human_delay, random_mouse_movement
+from outlook_stealth import human_type
+from outlook_playwright import human_click
 from outlook.config import MONTH_NAMES
 
 
@@ -47,14 +49,14 @@ class FormFiller:
                     human_delay(200, 400)
 
                 # Вводим email по-человечески
-                human_type(self.driver, selector, identity["email"], typo_rate=0.05)
+                human_type(self.driver, email_field, identity["email"], typo_rate=0.05)
                 human_delay(300, 600)
 
                 # Кнопка "Далі" / "Next"
                 next_btn = self.wait.until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'], button#idSIButton9, input#iSignupAction"))
                 )
-                human_click(self.driver, next_btn)
+                human_click(self.page, next_btn)
                 human_delay(1500, 2500)
 
                 # Проверяем, перешли ли на шаг с паролем

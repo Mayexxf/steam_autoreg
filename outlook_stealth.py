@@ -5,11 +5,13 @@ Steam Test Stealth Script - БЕЗ регистрации
 Только запуск браузера со стелс-функционалом для тестирования на Steam
 """
 from telnetlib import EC
-from typing import Dict
+from typing import Dict, Optional
 
 from scipy.interpolate import CubicSpline
 from selenium.webdriver import Keys
 from selenium.webdriver.support.wait import WebDriverWait
+
+from outlook_form import FormFiller
 from outlook.config import (
     HARDCODED_PROXY, PAGE_DELAY, FIRST_NAMES, LAST_NAMES, MONTH_NAMES,
     SIGNUP_URL
@@ -485,11 +487,13 @@ class SteamTestStealth:
     """Тестовый класс для проверки стелс-функционала БЕЗ регистрации на Steam"""
 
     def __init__(self, proxy=None, headless=False, fill_form=True):
+        self.generate_identity = None
         self.proxy = proxy
         self.headless = headless
         self.fill_form = fill_form
         self.driver = None
         self.proxy_manager = None  # MobileProxyManager instance
+        self.form_filler: Optional[FormFiller] = None
 
         # Настройки таймаутов
         self.page_timeout = 60
@@ -868,8 +872,7 @@ class SteamTestStealth:
 
             # === ШАГ 1: Ввод email ===
             print("\n[STEP 1] Ввод email...")
-            if not self.form_filler.fill_email(identity,
-                                               self.generate_identity):  # предполагаю, что метод адаптирован под Selenium
+            if not self.form_filler.fill_email(identity, self.generate_identity):  # предполагаю, что метод адаптирован под Selenium
                 print("[ERROR] Не удалось ввести email")
                 return None
 

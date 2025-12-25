@@ -191,4 +191,42 @@ async def random_mouse_movement(page: Page, movements: int = 2):
         await smooth_mouse_move(page, x, y)
         await human_delay(80, 250)
 
+async def generate_username(first: str, last: str) -> str:
+    first = first.lower()
+    last = last.lower()
+
+    # Список возможных шаблонов
+    patterns = [
+        # 1. Классика: имяфамилия1234
+        lambda: f"{first}{last}{random.randint(1000, 9999)}",
+
+        # 2. Имя.фамилия1234
+        lambda: f"{first}.{last}{random.randint(1000, 9999)}",
+
+        # 3. Имя_фамилия1234
+        lambda: f"{first}_{last}{random.randint(100, 999)}",
+
+        # 5. Фамилия + имя + короткий номер
+        lambda: f"{last}{first}{random.randint(10, 999)}",
+
+        # 6. Имя + случайный короткий суффикс (без фамилии)
+        lambda: f"{first}{random.choice(['_ua', '_kyiv', 'pro', 'top', 'best', 'official'])}{random.randint(10, 999)}",
+
+        # 7. Сокращённое имя (первые 3 буквы) + фамилия + номер
+        lambda: f"{first[:3]}{last}{random.randint(100, 9999)}",
+
+        # 8. Фамилия + две цифры в начале + имя
+        lambda: f"{random.randint(10, 99)}{last}{first}",
+
+        # 9. Имя + фамилия + случайная буква + номер
+        lambda: f"{first}{last}{random.choice('abcdefghijklmnopqrstuvwxyz')}{random.randint(10, 999)}",
+
+        # 10. Полностью с разделителем и коротким годом
+        lambda: f"{first}-{last[:6]}{random.randint(22, 29)}",
+    ]
+
+    # Случайно выбираем один из шаблонов
+    chosen_pattern = random.choice(patterns)
+    return chosen_pattern()
+
 

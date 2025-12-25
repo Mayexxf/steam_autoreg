@@ -77,6 +77,7 @@ class MobileProxyManager:
 
             # Формируем URL с параметрами
             url = f"{self.API_ENDPOINT}?proxy_key={self.proxy_key}&format=json"
+            print(f"{url}")
 
             # ВАЖНО: User-Agent обязателен по документации API!
             headers = {

@@ -67,7 +67,7 @@ except ImportError:
 HARDCODED_PROXY = "MPzEefwWaIUi:tc6aWZqR:pool.proxy.market:10000"
 
 # Задержки (в миллисекундах)
-TYPING_DELAY = (40, 120)       # Между символами
+TYPING_DELAY = (150, 350)       # Между символами
 CLICK_DELAY = (80, 200)        # После клика
 ACTION_DELAY = (200, 500)      # Между действиями
 PAGE_DELAY = (800, 1500)       # Загрузка страницы

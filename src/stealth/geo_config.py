@@ -283,7 +283,7 @@ GEO_MAPPING = {
 # Дефолтная конфигурация (если страна не найдена)
 DEFAULT_GEO_CONFIG = {
     "locale": "en-US",
-    "timezone": "America/New_York",
+    "timezone": "Europe/Kiev",
     "currency": "USD",
     "accept_language": "en-US,en;q=0.9",
     "keyboard_layout": "us",
